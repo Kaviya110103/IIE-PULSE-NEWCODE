@@ -1,0 +1,56 @@
+{
+  "expo": {
+    "name": "iiepulse",
+    "slug": "iiepulse",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/images/logo-transparent.png",
+    "scheme": "myapp",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#050505",
+        "foregroundImage": "./assets/images/logo-transparent.png",
+        "monochromeImage": "./assets/images/logo-transparent.png"
+      },
+      "usesCleartextTraffic": true,
+      "edgeToEdgeEnabled": true,
+      "predictiveBackGestureEnabled": false,
+      "package": "com.zentime2025.iiepulse"
+    },
+    "web": {
+      "output": "static",
+      "favicon": "./assets/images/logo-transparent.png"
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/images/logo-transparent.png",
+          "imageWidth": 220,
+          "resizeMode": "contain",
+          "backgroundColor": "#050505",
+          "dark": {
+            "backgroundColor": "#050505"
+          }
+        }
+      ],
+      "expo-font"
+    ],
+    "experiments": {
+      "typedRoutes": true,
+      "reactCompiler": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "f0ed9afc-d3cf-41b5-80e8-156db8e48c9c"
+      }
+    }
+  }
+}
