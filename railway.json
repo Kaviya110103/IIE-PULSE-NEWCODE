@@ -1,0 +1,19 @@
+{
+  "build": {
+    "builder": "herokuish"
+  },
+  "services": [
+    {
+      "name": "backend",
+      "path": "backend",
+      "buildCommand": "python -m pip install -r requirements.txt",
+      "startCommand": "gunicorn IIE.wsgi:application --bind 0.0.0.0:$PORT --workers 3 --log-file -"
+    },
+    {
+      "name": "frontend",
+      "path": "frontend",
+      "buildCommand": "npm install && npm run build",
+      "startCommand": "npm run start"
+    }
+  ]
+}
