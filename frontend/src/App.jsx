@@ -48,12 +48,21 @@ function ProtectedRoute({ children, allowedRoles }) {
   const { user } = useAuth()
   if (!user) return <Navigate to="/" replace />
   const role = (user.user_type === 'employee' && user.designation === 'counselor') ? 'counselor' : user.user_type
-  if (allowedRoles && !allowedRoles.includes(role) && !allowedRoles.includes(user.user_type)) return <Navigate to="/" replace />
+  if (allowedRoles && !allowedRoles.includes(role)) return <Navigate to="/" replace />
   return children
 }
 
 function AppRoutes() {
-  const { user } = useAuth()
+  const { user, loading } = useAuth()
+
+  if (loading) {
+    return (
+      <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', color: '#5523D2' }}>
+        Loading...
+      </div>
+    )
+  }
+
   if (!user) return (
     <Routes>
       <Route path="/" element={<Login />} />

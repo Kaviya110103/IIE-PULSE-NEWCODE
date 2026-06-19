@@ -22,6 +22,7 @@ import {
   Easing,
   Image,
   Linking,
+  PanResponder,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -147,7 +148,6 @@ const websiteUrl = "https://indrainstitute.com/";
 const facebookUrl = "https://www.facebook.com/share/1B52k1NCH7/";
 const googleFormUrl = "https://forms.gle/nKXHiEnnZHZeegig7";
 const appLogoLight = require("../../assets/images/logo-light.png");
-const appLogoDark = require("../../assets/images/logo-transparent.png");
 const heroStudentsImage = require("../../assets/images/hero-students.png");
 
 function openExternalLink(url: string) {
@@ -162,8 +162,7 @@ function openExternalLink(url: string) {
 export default function WelcomeScreen() {
   const router = useRouter();
   const { module } = useLocalSearchParams<{ module?: string }>();
-  const colorScheme = useColorScheme();
-  const appLogo = colorScheme === "dark" ? appLogoDark : appLogoLight;
+  const appLogo = appLogoLight;
   const slideAnim = useRef(new Animated.Value(1)).current;
   const [activeModule, setActiveModule] = useState<ModuleKey>("home");
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -178,6 +177,20 @@ export default function WelcomeScreen() {
   const [errorMsg, setErrorMsg] = useState("");
   const [activeNewsIndex, setActiveNewsIndex] = useState(0);
   const [isPrivateUser, setIsPrivateUser] = useState(false);
+  const drawerSwipeResponder = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponder: (event, gesture) =>
+        !drawerOpen &&
+        event.nativeEvent.pageX <= 28 &&
+        gesture.dx > 24 &&
+        Math.abs(gesture.dy) < 24,
+      onPanResponderRelease: (_event, gesture) => {
+        if (gesture.dx > 42) {
+          setDrawerOpen(true);
+        }
+      },
+    })
+  ).current;
 
   useEffect(() => {
     loadSession();
@@ -377,7 +390,7 @@ export default function WelcomeScreen() {
   };
 
   return (
-    <ThemedView style={styles.container}>
+    <ThemedView style={styles.container} {...drawerSwipeResponder.panHandlers}>
       {drawerOpen ? (
         <>
           <Pressable style={styles.drawerOverlay} onPress={() => setDrawerOpen(false)} />

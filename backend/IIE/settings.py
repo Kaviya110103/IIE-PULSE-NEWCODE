@@ -18,15 +18,9 @@ def env_list(key, default=None, sep=','):
         return [item.strip() for item in value.split(sep) if item.strip()]
     return default or []
 
-SECRET_KEY = os.getenv('DJANGO_SECRET_KEY', 'django-insecure-ep3$472yfj_22mh+dxwp0v++0$y22@j@gkxr*-m1a%_z%om($0')
-
-DEBUG = getenv_bool('DJANGO_DEBUG', True)
-
-ALLOWED_HOSTS = env_list(
-    'DJANGO_ALLOWED_HOSTS',
-    ['localhost', '127.0.0.1', '0.0.0.0', '10.0.2.2', '*'] if DEBUG else []
-)
-CSRF_TRUSTED_ORIGINS = env_list('DJANGO_CSRF_TRUSTED_ORIGINS')
+DEPLOYMENT_DOMAIN = os.getenv('DEPLOYMENT_DOMAIN', 'testiie.indrainstitute.com').strip()
+DEPLOYMENT_ORIGIN = f"https://{DEPLOYMENT_DOMAIN}"
+CSRF_TRUSTED_ORIGINS = env_list('DJANGO_CSRF_TRUSTED_ORIGINS', [DEPLOYMENT_ORIGIN])
 INSTALLED_APPS = [
     'django.contrib.admin',
     'django.contrib.auth',
@@ -84,6 +78,7 @@ WSGI_APPLICATION = 'IIE.wsgi.application'
 DATABASE_URL = os.getenv('DATABASE_URL') or os.getenv('RAILWAY_DATABASE_URL')
 DB_CONN_MAX_AGE = int(os.getenv('DB_CONN_MAX_AGE', 600))
 DB_SSL = getenv_bool('DB_SSL', False)
+_using_sqlite = not DATABASE_URL and not os.getenv('DB_NAME')
 
 if DATABASE_URL:
     DATABASES = {
@@ -119,6 +114,27 @@ else:
         }
     }
 
+SECRET_KEY = os.getenv('DJANGO_SECRET_KEY')
+if not SECRET_KEY:
+    if getenv_bool('DJANGO_DEBUG', _using_sqlite):
+        SECRET_KEY = 'django-insecure-dev-only-change-before-production'
+    else:
+        raise ValueError('DJANGO_SECRET_KEY environment variable is required when DEBUG is disabled.')
+
+DEBUG = getenv_bool('DJANGO_DEBUG', _using_sqlite)
+
+ALLOWED_HOSTS = env_list('DJANGO_ALLOWED_HOSTS')
+if not ALLOWED_HOSTS:
+    dev_hosts = [
+        'localhost',
+        '127.0.0.1',
+        '0.0.0.0',
+        '10.0.2.2',
+        '192.168.1.9',
+        DEPLOYMENT_DOMAIN,
+    ]
+    ALLOWED_HOSTS = dev_hosts if DEBUG else [DEPLOYMENT_DOMAIN]
+
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
         'rest_framework_simplejwt.authentication.JWTAuthentication',
@@ -145,10 +161,10 @@ CORS_ALLOWED_ORIGINS = env_list(
 
 CORS_ALLOW_CREDENTIALS = True
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
-SECURE_SSL_REDIRECT = getenv_bool('DJANGO_SECURE_SSL_REDIRECT', False)
+SECURE_SSL_REDIRECT = getenv_bool('DJANGO_SECURE_SSL_REDIRECT', not DEBUG)
 SESSION_COOKIE_SECURE = getenv_bool('DJANGO_SESSION_COOKIE_SECURE', SECURE_SSL_REDIRECT)
 CSRF_COOKIE_SECURE = getenv_bool('DJANGO_CSRF_COOKIE_SECURE', SECURE_SSL_REDIRECT)
-SECURE_HSTS_SECONDS = int(os.getenv('DJANGO_SECURE_HSTS_SECONDS', 0))
+SECURE_HSTS_SECONDS = int(os.getenv('DJANGO_SECURE_HSTS_SECONDS', 31536000 if not DEBUG else 0))
 SECURE_HSTS_INCLUDE_SUBDOMAINS = getenv_bool('DJANGO_SECURE_HSTS_INCLUDE_SUBDOMAINS', False)
 SECURE_HSTS_PRELOAD = getenv_bool('DJANGO_SECURE_HSTS_PRELOAD', False)
 SECURE_BROWSER_XSS_FILTER = True
@@ -180,10 +196,10 @@ STATICFILES_DIRS = []
 
 BREVO_API_KEY = os.getenv('BREVO_API_KEY', '')
 DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL', '')
-DEFAULT_FROM_NAME = os.getenv('DEFAULT_FROM_NAME', 'IIE Connect')
-APP_PORTAL_URL = os.getenv('APP_PORTAL_URL', '').rstrip('/')
+DEFAULT_FROM_NAME = os.getenv('DEFAULT_FROM_NAME', 'IIE Pulse')
+APP_PORTAL_URL = os.getenv('APP_PORTAL_URL', DEPLOYMENT_ORIGIN if not DEBUG else '').rstrip('/')
 
-X_FRAME_OPTIONS = 'SAMEORIGIN'
+X_FRAME_OPTIONS = os.getenv('DJANGO_X_FRAME_OPTIONS', 'DENY')
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 

@@ -302,7 +302,7 @@ export default function Sidebar({ role }) {
           <i className={`fas ${roleIcon[role] || 'fa-user'}`} style={{ fontSize: 16 }} />
         </div>
         <div>
-          <div style={S.logoText}>IIE Connect</div>
+          <div style={S.logoText}>IIE Pulse</div>
           <div style={S.logoSub}>Indra Institute of Education</div>
         </div>
       </div>

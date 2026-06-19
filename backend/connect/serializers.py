@@ -9,7 +9,7 @@ from .models import (
     DoubtResponse, Announcement, AnnouncementView, CounselorLeaveRequest,
     CounselorSupportRequest, Quiz, QuizQuestion, QuizAttempt, QuizAnswer,
     CompletedStudent, SessionCompletionRequest, TrainerSessionReport, TestResult,
-    GalleryItem, VlogItem, NewsItem, CalendarEvent, Referral
+    GalleryItem, VlogItem, NewsItem, CalendarEvent, Referral, CounselorAnnouncement
 )
 
 
@@ -271,7 +271,7 @@ class TestSerializer(serializers.ModelSerializer):
         return None
 
 class AssignedTestSerializer(serializers.ModelSerializer):
-    test_name = serializers.CharField(source='test.test_name', read_only=True)
+    test_name = serializers.CharField(source='test.title', read_only=True)
     batch_number = serializers.CharField(source='batch.batch_number', read_only=True)
 
     class Meta:
@@ -468,9 +468,7 @@ class CounselorAnnouncementSerializer(serializers.ModelSerializer):
     branch = serializers.SerializerMethodField()
 
     class Meta:
-        # Use the central Announcement model stored in `connect_announcement` table
-        
-        model = Announcement
+        model = CounselorAnnouncement
         fields = '__all__'
         read_only_fields = ['created_by', 'branch']
         extra_kwargs = {

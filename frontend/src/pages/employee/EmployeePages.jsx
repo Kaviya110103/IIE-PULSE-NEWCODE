@@ -630,7 +630,7 @@ function AttendanceModal({ batch, onClose }) {
 }
 
 // ─── Request Completion Section ────────────────────────────────────────────
-function RequestCompletionSection({ batch, students, sessions, onSuccess }) {
+function RequestCompletionSection({ batch, students, sessions, onSuccess, openSignal = 0, initialStudentId = '' }) {
   const [showForm, setShowForm] = useState(false)
   const [selectedStudent, setSelectedStudent] = useState('')
   const [selectedCounselor, setSelectedCounselor] = useState('')
@@ -646,6 +646,12 @@ function RequestCompletionSection({ batch, students, sessions, onSuccess }) {
         .catch(err => console.error("Error fetching counselors:", err))
     }
   }, [batch?.branch, showForm])
+
+  useEffect(() => {
+    if (!openSignal) return
+    setShowForm(true)
+    if (initialStudentId) setSelectedStudent(String(initialStudentId))
+  }, [openSignal, initialStudentId])
 
   const completedCount = sessions.filter(s => s.staff_completed).length
   const totalCount = sessions.length
@@ -764,6 +770,10 @@ function SessionsModal({ batch, onClose }) {
   const [loading, setLoading] = useState(true)
   const [tab, setTab] = useState('all')
   const [toggling, setToggling] = useState(null)
+  const [extracting, setExtracting] = useState(false)
+  const [finalStudentId, setFinalStudentId] = useState('')
+  const [requestOpenSignal, setRequestOpenSignal] = useState(0)
+  const [finalizing, setFinalizing] = useState(false)
 
   const load = () => {
     setLoading(true)
@@ -782,6 +792,7 @@ function SessionsModal({ batch, onClose }) {
   const completed = sessions.filter(s => s.staff_completed)
   const pending = sessions.filter(s => !s.staff_completed)
   const pct = sessions.length ? Math.round((completed.length / sessions.length) * 100) : 0
+  const allMentorSessionsCompleted = sessions.length > 0 && completed.length === sessions.length
   const logsheetUrl =
   data?.logsheet_url ||
   data?.batch?.course_logsheet_url ||
@@ -805,12 +816,37 @@ function SessionsModal({ batch, onClose }) {
   }
 
   const handleExtract = async () => {
+    if (extracting) return
+    setExtracting(true)
     try {
       const r = await api.post(`/batches/${batch.id}/extract-sessions/`)
       setData(prev => ({ ...prev, sessions: r.data.sessions }))
       toast.success(r.data.message)
     } catch (err) {
       toast.error(err.response?.data?.error || 'Extraction failed')
+    } finally {
+      setExtracting(false)
+    }
+  }
+
+  const selectedFinalStudent = finalStudentId || (students[0]?.id ? String(students[0].id) : '')
+
+  const openCompletionRequest = () => {
+    if (!selectedFinalStudent) return toast.error('Select a student')
+    setRequestOpenSignal(value => value + 1)
+  }
+
+  const handleMoveCompleted = async () => {
+    if (!selectedFinalStudent) return toast.error('Select a student')
+    setFinalizing(true)
+    try {
+      await api.post(`/students/${selectedFinalStudent}/complete/`)
+      toast.success('Student moved to completed list')
+      load()
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Failed to move student')
+    } finally {
+      setFinalizing(false)
     }
   }
 
@@ -853,8 +889,8 @@ function SessionsModal({ batch, onClose }) {
 
           {logsheetUrl && sessions.length === 0 && (
             <div style={{ marginBottom: 14 }}>
-              <button className="employee-btn employee-btn-primary w-100" onClick={handleExtract}>
-                <i className="fas fa-magic" /> Extract Sessions from Logsheet
+              <button className="employee-btn employee-btn-primary w-100" onClick={handleExtract} disabled={extracting}>
+                <i className={`fas ${extracting ? 'fa-spinner fa-spin' : 'fa-magic'}`} /> {extracting ? 'Extracting...' : 'Extract Sessions from Logsheet'}
               </button>
               <small className="employee-hint">Click to auto-extract sessions from the uploaded PDF logsheet</small>
             </div>
@@ -863,6 +899,45 @@ function SessionsModal({ batch, onClose }) {
           {sessions.length > 0 && (
             <div className="employee-alert-info" style={{ marginBottom: 14 }}>
               <i className="fas fa-info-circle" /> <strong>How it works:</strong> Check the box next to a session to mark it as completed. Students will be notified and can confirm or raise a doubt.
+            </div>
+          )}
+
+          {allMentorSessionsCompleted && students.length > 0 && (
+            <div style={{
+              marginBottom: 14,
+              padding: 16,
+              border: `1px solid ${T.border}`,
+              borderRadius: 10,
+              background: '#fffaf0'
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+                <div style={{ flex: '1 1 260px' }}>
+                  <div style={{ fontWeight: 700, color: T.navy, marginBottom: 4 }}>
+                    Move this student to the completed list or send a reassignment request?
+                  </div>
+                  <div style={{ color: T.slate, fontSize: 12 }}>
+                    Mentor sessions are complete. If the student has also completed all sessions, click Completed. Otherwise, send a request to the counselor.
+                  </div>
+                </div>
+                <select
+                  className="employee-select"
+                  style={{ minWidth: 220, flex: '0 1 260px' }}
+                  value={selectedFinalStudent}
+                  onChange={e => setFinalStudentId(e.target.value)}
+                >
+                  {students.map(s => (
+                    <option key={s.id} value={s.id}>{s.first_name} {s.last_name} ({s.student_id})</option>
+                  ))}
+                </select>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 12, flexWrap: 'wrap' }}>
+                <button className="employee-btn employee-btn-primary employee-btn-sm" onClick={openCompletionRequest}>
+                  <i className="fas fa-paper-plane" /> Request
+                </button>
+                <button className="employee-btn employee-btn-teal employee-btn-sm" onClick={handleMoveCompleted} disabled={finalizing}>
+                  {finalizing ? <><i className="fas fa-spinner fa-spin" /> Moving...</> : <><i className="fas fa-check" /> Completed</>}
+                </button>
+              </div>
             </div>
           )}
 
@@ -945,7 +1020,14 @@ function SessionsModal({ batch, onClose }) {
           </div>
 
           {sessions.length > 0 && students.length > 0 && (
-            <RequestCompletionSection batch={batch} students={students} sessions={sessions} onSuccess={load} />
+            <RequestCompletionSection
+              batch={batch}
+              students={students}
+              sessions={sessions}
+              onSuccess={load}
+              openSignal={requestOpenSignal}
+              initialStudentId={selectedFinalStudent}
+            />
           )}
         </>
       )}
@@ -3698,7 +3780,7 @@ export function UploadQuiz() {
           <form onSubmit={handleSubmit}>
             <div className="employee-fg"><label className="employee-label">Quiz Title *</label><input className="employee-input" value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} required /></div>
             <div className="employee-fg"><label className="employee-label">Description</label><textarea className="employee-input" rows={2} value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} /></div>
-            <div className="employee-fg"><label className="employee-label">Select Batch *</label><select className="employee-select" value={form.batch_id} onChange={e => setForm({ ...form, batch_id: e.target.value })} required><option value="">-- Select Batch --</option>{batches.map(b => <option key={b.id} value={b.id}>{b.batch_number}</option>)}</select></div>
+            <div className="employee-fg"><label className="employee-label">Select Batch *</label><select className="employee-select" value={form.batch_id} onChange={e => setForm({ ...form, batch_id: e.target.value })} required><option value="">-- Select Batch --</option><option value="practice">Practice Test - All Students</option>{batches.map(b => <option key={b.id} value={b.id}>{b.batch_number}</option>)}</select></div>
             <div className="employee-row-grid-2">
               <div className="employee-fg"><label className="employee-label">Duration (minutes)</label><input type="number" className="employee-input" value={form.duration_minutes} onChange={e => setForm({ ...form, duration_minutes: parseInt(e.target.value) })} /></div>
               <div className="employee-fg"><label className="employee-label">Passing Marks (%)</label><input type="number" className="employee-input" value={form.passing_marks} onChange={e => setForm({ ...form, passing_marks: parseInt(e.target.value) })} /></div>

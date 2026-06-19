@@ -4,10 +4,63 @@ import api from '../api/client'
 const AuthContext = createContext(null)
 
 export function AuthProvider({ children }) {
-  const [user, setUser] = useState(() => {
-    try { return JSON.parse(localStorage.getItem('user') || 'null') } catch { return null }
-  })
-  const [loading, setLoading] = useState(false)
+  const [user, setUser] = useState(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    let cancelled = false
+
+    const bootstrap = async () => {
+      const access = localStorage.getItem('access')
+      const refresh = localStorage.getItem('refresh')
+      let storedUser = null
+
+      try {
+        storedUser = JSON.parse(localStorage.getItem('user') || 'null')
+      } catch {
+        storedUser = null
+      }
+
+      if (!storedUser || (!access && !refresh)) {
+        localStorage.removeItem('user')
+        if (!cancelled) {
+          setUser(null)
+          setLoading(false)
+        }
+        return
+      }
+
+      try {
+        if (!access && refresh) {
+          const { data } = await api.post('/auth/refresh/', { refresh })
+          localStorage.setItem('access', data.access)
+        } else if (!access) {
+          throw new Error('Session expired')
+        }
+
+        const verifyPath =
+          storedUser.user_type === 'admin'
+            ? '/dashboard/admin/'
+            : storedUser.user_type === 'student'
+              ? '/dashboard/student/'
+              : storedUser.designation === 'counselor'
+                ? '/dashboard/counselor/'
+                : '/dashboard/employee/'
+
+        await api.get(verifyPath)
+
+        if (!cancelled) setUser(storedUser)
+      } catch {
+        localStorage.clear()
+        if (!cancelled) setUser(null)
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+
+    bootstrap()
+    return () => { cancelled = true }
+  }, [])
 
   const login = async (username, password, user_type) => {
     setLoading(true)

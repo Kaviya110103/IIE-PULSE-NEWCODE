@@ -432,7 +432,7 @@ export default function Login() {
               <div className="iie-right-logo">
                 <img src={logo} alt="IIE" />
                 <div className="iie-right-logo-text">
-                  <strong>IIE Connect</strong>
+                  <strong>IIE Pulse</strong>
                   <span>Indra Institute of Education</span>
                 </div>
               </div>
@@ -456,7 +456,7 @@ export default function Login() {
               <button className="iie-back" onClick={() => setView('login')}>
                 <ArrowLeft size={13} /> Back to Login
               </button>
-              <div className="iie-footer">IIE Connect © 2025 — All rights reserved</div>
+              <div className="iie-footer">IIE Pulse © 2025 — All rights reserved</div>
             </div>
           </div>
         </div>
@@ -483,7 +483,7 @@ export default function Login() {
               <div className="iie-right-logo">
                 <img src={logo} alt="IIE" />
                 <div className="iie-right-logo-text">
-                  <strong>IIE Connect</strong>
+                  <strong>IIE Pulse</strong>
                   <span>Indra Institute of Education</span>
                 </div>
               </div>
@@ -538,7 +538,7 @@ export default function Login() {
                   Resend OTP
                 </button>
               </div>
-              <div className="iie-footer">IIE Connect © 2025 — All rights reserved</div>
+              <div className="iie-footer">IIE Pulse © 2025 — All rights reserved</div>
             </div>
           </div>
         </div>
@@ -560,7 +560,7 @@ export default function Login() {
           <div className="iie-left-logo">
             <img src={logo} alt="IIE Logo" />
           </div>
-          <h1>Welcome to<br />IIE Connect</h1>
+          <h1>Welcome to<br />IIE Pulse</h1>
           <p>Your all-in-one platform for managing students, staff, batches, and academic progress at Indra Institute of Education.</p>
           <div className="iie-features">
             <div className="iie-feature">
@@ -593,7 +593,7 @@ export default function Login() {
             <div className="iie-right-logo">
               {/* <img src={logo} alt="IIE" /> */}
               <div className="iie-right-logo-text">
-                <strong>IIE Connect</strong>
+                <strong>IIE Pulse</strong>
                 <span>Indra Institute of Education</span>
               </div>
             </div>
@@ -638,7 +638,7 @@ export default function Login() {
               </button>
             </form>
 
-            <div className="iie-footer">IIE Connect © 2025 — All rights reserved</div>
+            <div className="iie-footer">IIE Pulse © 2025 — All rights reserved</div>
           </div>
         </div>
       </div>

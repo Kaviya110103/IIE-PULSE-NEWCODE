@@ -82,6 +82,7 @@ urlpatterns = [
     path('api/students/<str:student_id>/assign-staff/', v.assign_staff_to_student),
     path('api/students/<str:student_id>/remove-staff/', v.remove_staff_from_student),
     path('api/students/<int:student_id>/request-completion/', v.request_completion),
+    path('api/students/<int:student_id>/complete/', v.complete_student_by_trainer),
 
     # ── ATTENDANCE ────────────────────────────────────────────────────────────
     path('api/attendance/', v.AttendanceListView),
@@ -192,6 +193,8 @@ urlpatterns = [
     path('api/quiz/upload/', v.upload_quiz),
     path('api/quiz/staff-results/', v.staff_quiz_results),
     path('api/quiz/student/', student_quizzes, name='student-quizzes'),
+    path('api/quiz/practice/', v.practice_quizzes, name='practice-quizzes'),
+    path('api/quiz/practice/<int:quiz_id>/submit/', v.submit_practice_quiz, name='submit-practice-quiz'),
     path('api/quiz/result/<int:attempt_id>/', quiz_result_details, name='quiz-result-details'),
     path('api/quiz/attempt/<int:attempt_id>/result/', v.quiz_result),
     path('api/quiz/<int:quiz_id>/take/', student_take_quiz, name='student-take-quiz'),

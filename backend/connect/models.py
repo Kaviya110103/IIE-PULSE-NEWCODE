@@ -956,7 +956,7 @@ class Quiz ( models.Model ) :
     quiz_id = models.CharField ( max_length = 20 , unique = True , editable = False )
     title = models.CharField ( max_length = 200 )
     description = models.TextField ( blank = True )
-    batch = models.ForeignKey ( Batches , on_delete = models.CASCADE , related_name = 'quizzes' )
+    batch = models.ForeignKey ( Batches , on_delete = models.CASCADE , related_name = 'quizzes' , blank = True , null = True )
     created_by = models.ForeignKey ( Employee , on_delete = models.SET_NULL , null = True )
     source_file = models.FileField ( upload_to = 'quiz_files/' , blank = True , null = True )
     total_questions = models.IntegerField ( default = 0 )
@@ -964,6 +964,12 @@ class Quiz ( models.Model ) :
     passing_marks = models.IntegerField ( default = 35 )
     duration_minutes = models.IntegerField ( default = 30 )
     difficulty = models.CharField ( max_length = 20 , choices = DIFFICULTY_CHOICES , default = 'medium' )
+    category = models.CharField(max_length=100, blank=True)
+    start_date = models.DateTimeField(blank=True, null=True)
+    end_date = models.DateTimeField(blank=True, null=True)
+    shuffle_questions = models.BooleanField(default=True)
+    shuffle_options = models.BooleanField(default=False)
+    number_of_questions = models.IntegerField(default=0)
     
     is_published = models.BooleanField ( default = False )
     publish_date = models.DateTimeField ( null = True , blank = True )
@@ -1029,6 +1035,13 @@ class QuizAttempt ( models.Model ) :
     score = models.IntegerField ( default = 0 )
     percentage = models.FloatField ( default = 0 )
     is_passed = models.BooleanField ( default = False )
+    total_questions = models.IntegerField(default=0)
+    attempted_count = models.IntegerField(default=0)
+    correct_count = models.IntegerField(default=0)
+    wrong_count = models.IntegerField(default=0)
+    question_order = models.JSONField(blank=True, default=list)
+    option_orders = models.JSONField(blank=True, default=dict)
+    auto_submitted = models.BooleanField(default=False)
     
     class Meta :
         unique_together = [ 'quiz' , 'student' , 'attempt_number' ]

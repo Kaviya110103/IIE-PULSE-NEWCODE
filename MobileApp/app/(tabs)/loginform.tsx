@@ -17,7 +17,7 @@ import {
   View,
 } from "react-native";
 
-const appLogo = require("../../assets/images/logo-transparent.png");
+const appLogo = require("../../assets/images/logo-light.png");
 
 export default function LoginForm() {
   const router = useRouter();
@@ -194,7 +194,7 @@ export default function LoginForm() {
 const styles = StyleSheet.create({
   splashScreen: {
     flex: 1,
-    backgroundColor: "#5523D2",
+    backgroundColor: "#FFFFFF",
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: 30,

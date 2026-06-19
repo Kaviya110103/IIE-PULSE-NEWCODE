@@ -31,9 +31,11 @@ function applyGlobalTypography() {
 
   textComponent.defaultProps = textComponent.defaultProps || {};
   textComponent.defaultProps.style = [defaultTextStyle, textComponent.defaultProps.style];
+  textComponent.defaultProps.maxFontSizeMultiplier = 1;
 
   inputComponent.defaultProps = inputComponent.defaultProps || {};
   inputComponent.defaultProps.style = [baseInputStyle, inputComponent.defaultProps.style];
+  inputComponent.defaultProps.maxFontSizeMultiplier = 1;
   inputComponent.defaultProps.placeholderTextColor =
     inputComponent.defaultProps.placeholderTextColor || "#8A7CA8";
 

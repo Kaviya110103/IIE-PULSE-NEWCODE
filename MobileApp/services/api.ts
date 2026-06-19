@@ -3,17 +3,7 @@ import axios from "axios";
 import Constants from "expo-constants";
 import { Platform } from "react-native";
 
-const LAN_API_BASE_URL = "http://192.168.1.4:8000/api/";
-
-function getExpoHostName() {
-  const constants = Constants as any;
-  const hostUri =
-    constants?.expoConfig?.hostUri ||
-    constants?.manifest?.debuggerHost ||
-    constants?.manifest2?.extra?.expoClient?.hostUri;
-
-  return typeof hostUri === "string" ? hostUri.split(":")[0] : "";
-}
+const DEFAULT_DEV_API = "http://192.168.1.9:8000/api/";
 
 function normalizeApiBaseUrl(url: string) {
   return url.endsWith("/") ? url : `${url}/`;
@@ -26,7 +16,24 @@ function getEnvApiBaseUrl() {
     return "";
   }
 
+  if (
+    Platform.OS !== "web" &&
+    (envApiUrl.includes("localhost") || envApiUrl.includes("127.0.0.1"))
+  ) {
+    return "";
+  }
+
   return normalizeApiBaseUrl(envApiUrl);
+}
+
+function getExpoHostName() {
+  const constants = Constants as any;
+  const hostUri =
+    constants?.expoConfig?.hostUri ||
+    constants?.manifest?.debuggerHost ||
+    constants?.manifest2?.extra?.expoClient?.hostUri;
+
+  return typeof hostUri === "string" ? hostUri.split(":")[0] : "";
 }
 
 function getExpoApiBaseUrl() {
@@ -53,7 +60,12 @@ function getApiBaseUrl() {
   }
 
   if (Platform.OS !== "web") {
-    return LAN_API_BASE_URL;
+    return DEFAULT_DEV_API;
+  }
+
+  const expoApiUrl = getExpoApiBaseUrl();
+  if (expoApiUrl) {
+    return expoApiUrl;
   }
 
   const hostname =
@@ -65,11 +77,10 @@ function getApiBaseUrl() {
     return normalizeApiBaseUrl(`${protocol}//${hostname}:8000/api/`);
   }
 
-  return "http://localhost:8000/api/";
+  return DEFAULT_DEV_API;
 }
 
-const API_BASE_URL =
-  getApiBaseUrl();
+const API_BASE_URL = getApiBaseUrl();
     
 const API_ORIGIN = API_BASE_URL.replace(/\/api\/?$/, "");
 
@@ -81,12 +92,10 @@ function getCandidateApiBaseUrls() {
     urls.add(envApiUrl);
   }
 
-  urls.add(LAN_API_BASE_URL);
+  urls.add(DEFAULT_DEV_API);
 
-  urls.add(API_BASE_URL);
-
-  if (Platform.OS !== "web") {
-    return Array.from(urls).map(normalizeApiBaseUrl);
+  if (Platform.OS === "android") {
+    urls.add("http://10.0.2.2:8000/api/");
   }
 
   const expoApiUrl = getExpoApiBaseUrl();
@@ -94,7 +103,7 @@ function getCandidateApiBaseUrls() {
     urls.add(expoApiUrl);
   }
 
-  urls.add("http://localhost:8000/api/");
+  urls.add(API_BASE_URL);
 
   return Array.from(urls).map(normalizeApiBaseUrl);
 }
@@ -135,14 +144,36 @@ api.interceptors.request.use(async (config) => {
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
+    const originalRequest = error.config;
     const errorCode = error?.response?.data?.code;
     const detail = String(error?.response?.data?.detail || "").toLowerCase();
-
-    if (
+    const isTokenError =
       errorCode === "token_not_valid" ||
       detail.includes("token not valid") ||
-      detail.includes("given token not valid")
-    ) {
+      detail.includes("given token not valid");
+
+    if (isTokenError && originalRequest && !originalRequest._retry) {
+      originalRequest._retry = true;
+      const refresh = await AsyncStorage.getItem("refresh_token");
+
+      if (refresh) {
+        try {
+          const refreshResponse = await axios.post(`${API_BASE_URL}auth/refresh/`, { refresh });
+          const newAccess = refreshResponse.data?.access;
+
+          if (newAccess) {
+            await AsyncStorage.setItem("access_token", newAccess);
+            originalRequest.headers = originalRequest.headers || {};
+            originalRequest.headers.Authorization = `Bearer ${newAccess}`;
+            return api(originalRequest);
+          }
+        } catch {
+          // fall through to clear session
+        }
+      }
+    }
+
+    if (isTokenError) {
       await AsyncStorage.multiRemove([
         "access_token",
         "refresh_token",
@@ -161,6 +192,33 @@ type LoginPayload = {
   password: string;
   user_type: "admin" | "employee" | "student";
 };
+
+function getApiErrorMessage(error: any, fallback = "Request failed") {
+  const data = error?.response?.data;
+
+  if (!data) {
+    return error?.message || fallback;
+  }
+
+  if (typeof data === "string") {
+    return data;
+  }
+
+  if (data.error || data.detail) {
+    return data.error || data.detail;
+  }
+
+  const firstValue = Object.values(data)[0];
+  if (Array.isArray(firstValue)) {
+    return String(firstValue[0] || fallback);
+  }
+
+  if (firstValue) {
+    return String(firstValue);
+  }
+
+  return error?.message || fallback;
+}
 
 export type GuestRegistrationPayload = {
   name: string;
@@ -304,10 +362,7 @@ export async function loginUser(payload: LoginPayload) {
       error:
         (networkError &&
           `Cannot connect to backend. Tried: ${attemptedUrls}. Please start the backend server or set EXPO_PUBLIC_API_URL.`) ||
-        error?.response?.data?.error ||
-        error?.response?.data?.detail ||
-        error?.message ||
-        "Login failed",
+        getApiErrorMessage(error, "Login failed"),
       data: error?.response?.data,
     };
   }
@@ -410,15 +465,6 @@ function normalizeList<T>(data: T[] | { results?: T[] }) {
   }
 
   return data?.results || [];
-}
-
-function getApiErrorMessage(error: any) {
-  return (
-    error?.response?.data?.error ||
-    error?.response?.data?.detail ||
-    error?.message ||
-    "Failed to load updates"
-  );
 }
 
 export function resolveMediaUrl(url?: string, apiBaseUrl = API_BASE_URL) {

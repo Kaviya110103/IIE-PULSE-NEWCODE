@@ -4,7 +4,7 @@
     "slug": "iiepulse",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/logo-transparent.png",
+    "icon": "./assets/images/icon.png",
     "scheme": "myapp",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
@@ -14,8 +14,8 @@
     "android": {
       "adaptiveIcon": {
         "backgroundColor": "#050505",
-        "foregroundImage": "./assets/images/logo-transparent.png",
-        "monochromeImage": "./assets/images/logo-transparent.png"
+        "foregroundImage": "./assets/images/android-icon-foreground.png",
+        "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "usesCleartextTraffic": true,
       "edgeToEdgeEnabled": true,
@@ -24,19 +24,19 @@
     },
     "web": {
       "output": "static",
-      "favicon": "./assets/images/logo-transparent.png"
+      "favicon": "./assets/images/icon.png"
     },
     "plugins": [
       "expo-router",
       [
         "expo-splash-screen",
         {
-          "image": "./assets/images/logo-transparent.png",
-          "imageWidth": 220,
+          "image": "./assets/images/logo-light.png",
+          "imageWidth": 180,
           "resizeMode": "contain",
-          "backgroundColor": "#050505",
+          "backgroundColor": "#FFFFFF",
           "dark": {
-            "backgroundColor": "#050505"
+            "backgroundColor": "#FFFFFF"
           }
         }
       ],

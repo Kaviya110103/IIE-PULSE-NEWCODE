@@ -1431,8 +1431,8 @@ api.get(url).then(r => setEmps(r.data.results || r.data))
   }
 
   const timings = [
-    'Morning (10:00 AM - 11:00 PM)',
-    'Afternoon (11:00 PM - 12:00 PM)',
+    'Morning (10:00 AM - 11:00 AM)',
+    'Morning (11:00 AM - 12:00 PM)',
     'Afternoon (12:00 PM - 1:00 PM)',
     'Afternoon (1:00 PM - 2:00 PM)',
     'Evening (3:00 PM - 4:00 PM)',

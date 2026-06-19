@@ -3,7 +3,9 @@ import react from '@vitejs/plugin-react'
 
 const parseAllowedHosts = () => {
   const hosts = process.env.VITE_ALLOWED_HOSTS
-  return hosts ? hosts.split(',').map(host => host.trim()).filter(Boolean) : true
+  return hosts
+    ? hosts.split(',').map(host => host.trim()).filter(Boolean)
+    : ['testiie.indrainstitute.com', 'localhost', '127.0.0.1']
 }
 
 export default defineConfig({

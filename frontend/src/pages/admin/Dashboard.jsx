@@ -31,7 +31,7 @@ export default function AdminDashboard() {
 
   const cards = [
     { label: 'Active Students', value: stats?.student_count, icon: GraduationCap, color: '#4f46e5', to: '/admin/students' },
-    { label: 'Mentors / Trainers', value: stats?.mentor_count, icon: UserCheck, color: '#06b6d4', to: '/admin/employees' },
+    { label: 'Employees', value: stats?.employee_count ?? 0, icon: UserCheck, color: '#06b6d4', to: '/admin/employees' },
     { label: 'Courses', value: stats?.course_count, icon: BookOpen, color: '#10b981', to: '/admin/courses' },
     { label: 'Batches', value: stats?.batch_count, icon: Briefcase, color: '#f59e0b', to: '/admin/batches' },
     { label: 'Completed Students', value: stats?.completed_count, icon: Award, color: '#8b5cf6', to: '/admin/completed' },
@@ -42,7 +42,7 @@ export default function AdminDashboard() {
     <div>
       <div className="page-header">
         <h1>Admin Dashboard</h1>
-        <p>Overview of IIE Connect platform</p>
+        <p>Overview of IIE Pulse platform</p>
       </div>
 
       <div className="stat-grid">
@@ -72,7 +72,7 @@ export default function AdminDashboard() {
           <h3 style={{ fontWeight: 600, marginBottom: 16, fontSize: 15 }}>Platform Summary</h3>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             {[
-              { label: 'Total Employees', value: (stats?.mentor_count || 0) + (stats?.counselor_count || 0) + (stats?.trainer_count || 0) },
+              { label: 'Total Employees', value: stats?.employee_count ?? 0 },
               { label: 'Active Students', value: stats?.student_count },
               { label: 'Total Courses', value: stats?.course_count },
               { label: 'Running Batches', value: stats?.batch_count },

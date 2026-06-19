@@ -10,7 +10,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import api from "@/services/api";
+import api, { resolveMediaUrl } from "@/services/api";
 
 type MaterialItem = {
   id: number;
@@ -32,7 +32,13 @@ export default function MaterialsScreen() {
     try {
       setErrorMsg("");
       const response = await api.get("/materials/");
-      setMaterials(response.data?.results || response.data || []);
+      const rawItems = response.data?.results || response.data || [];
+      setMaterials(
+        rawItems.map((item: MaterialItem) => ({
+          ...item,
+          file: item.file ? resolveMediaUrl(item.file) : item.file,
+        }))
+      );
     } catch (error: any) {
       setErrorMsg(
         error?.response?.data?.error || "Failed to load materials"

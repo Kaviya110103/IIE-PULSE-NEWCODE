@@ -1,6 +1,7 @@
 import { Tabs, useGlobalSearchParams, usePathname, useRouter } from "expo-router";
 import { useEffect, useMemo } from "react";
-import { BackHandler, PanResponder, StyleSheet, View } from "react-native";
+import { ActivityIndicator, BackHandler, PanResponder, StyleSheet, View } from "react-native";
+import { useStudentAuthGuard } from "@/hooks/use-student-auth-guard";
 
 const HOME_PATH = "/welcome";
 const NO_SWIPE_PATHS = new Set(["/", HOME_PATH, "/loginform", "/register", "/public-overview"]);
@@ -8,6 +9,7 @@ const NO_SWIPE_PATHS = new Set(["/", HOME_PATH, "/loginform", "/register", "/pub
 export default function TabsLayout() {
   const router = useRouter();
   const pathname = usePathname();
+  const authReady = useStudentAuthGuard();
   const { mode } = useGlobalSearchParams<{ mode?: string }>();
   const routeMode = Array.isArray(mode) ? mode[0] : mode;
   const canGoHome = !NO_SWIPE_PATHS.has(pathname);
@@ -63,6 +65,11 @@ export default function TabsLayout() {
 
   return (
     <View style={styles.shell}>
+      {!authReady ? (
+        <View style={styles.loadingScreen}>
+          <ActivityIndicator size="large" color="#5523D2" />
+        </View>
+      ) : (
       <Tabs
         screenOptions={{
           headerShown: false,
@@ -86,8 +93,9 @@ export default function TabsLayout() {
         <Tabs.Screen name="app" />
         <Tabs.Screen name="support" />
       </Tabs>
+      )}
 
-      {canGoHome ? (
+      {canGoHome && authReady ? (
         <View
           {...edgeSwipeResponder.panHandlers}
           pointerEvents="box-only"
@@ -101,6 +109,12 @@ export default function TabsLayout() {
 const styles = StyleSheet.create({
   shell: {
     flex: 1,
+  },
+  loadingScreen: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#F8F7FF",
   },
   edgeSwipeZone: {
     position: "absolute",

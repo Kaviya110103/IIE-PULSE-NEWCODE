@@ -91,6 +91,21 @@ export default function LogsheetScreen() {
     });
   }, [search, sessions]);
 
+  const completedCount = useMemo(
+    () => sessions.filter((session) => session.student_status === "completed").length,
+    [sessions]
+  );
+  const pendingCount = useMemo(
+    () =>
+      sessions.filter(
+        (session) => session.student_status !== "completed"
+      ).length,
+    [sessions]
+  );
+  const progressPercent = sessions.length
+    ? Math.round((completedCount / sessions.length) * 100)
+    : 0;
+
   const handleComplete = async (id: number) => {
     const session = sessions.find((item) => item.id === id);
     if (!session) return;
@@ -107,7 +122,6 @@ export default function LogsheetScreen() {
       setSubmittingId(id);
       await api.post("sessions/student-complete/", { session_id: id });
       await loadSessions();
-      Alert.alert("Success", "Session marked as completed.");
     } catch (error: any) {
       Alert.alert(
         "Error",
@@ -236,7 +250,34 @@ export default function LogsheetScreen() {
           </View>
         </View>
 
-        <Text style={styles.mainHeading}>My Course Sessions</Text>
+        <View style={styles.summaryCard}>
+          <View style={styles.summaryTop}>
+            <View>
+              <Text style={styles.summaryLabel}>My Course Sessions</Text>
+              <Text style={styles.summaryTitle}>{progressPercent}% Complete</Text>
+            </View>
+            <View style={styles.summaryIcon}>
+              <Ionicons name="reader-outline" size={24} color="#FFFFFF" />
+            </View>
+          </View>
+          <View style={styles.progressTrack}>
+            <View style={[styles.progressFill, { width: `${progressPercent}%` }]} />
+          </View>
+          <View style={styles.statRow}>
+            <View style={styles.statPill}>
+              <Text style={styles.statValue}>{sessions.length}</Text>
+              <Text style={styles.statText}>Total</Text>
+            </View>
+            <View style={styles.statPill}>
+              <Text style={styles.statValue}>{pendingCount}</Text>
+              <Text style={styles.statText}>Pending</Text>
+            </View>
+            <View style={styles.statPill}>
+              <Text style={styles.statValue}>{completedCount}</Text>
+              <Text style={styles.statText}>Completed</Text>
+            </View>
+          </View>
+        </View>
 
         {filteredSessions.length === 0 ? (
           <View style={styles.emptyCard}>
@@ -249,12 +290,17 @@ export default function LogsheetScreen() {
             const isBusy = submittingId === session.id;
 
             return (
-              <View key={session.id} style={styles.card}>
+              <View
+                key={session.id}
+                style={[styles.card, isCompleted && styles.cardCompleted]}
+              >
                 <View style={styles.cardHeader}>
-                  <Ionicons name="book" size={22} color="#5523D2" />
-                  <Text style={styles.sessionTitle}>
-                    Session {session.session_number}: {session.title}
-                  </Text>
+                  <View style={styles.sessionCopy}>
+                    <Text style={styles.sessionLabel}>Session {session.session_number}</Text>
+                    <Text style={styles.sessionTitle}>
+                      {session.title?.trim() || `Session ${session.session_number}`}
+                    </Text>
+                  </View>
                 </View>
 
                 {statusMeta.show && (
@@ -268,10 +314,11 @@ export default function LogsheetScreen() {
                   </View>
                 )}
 
-                <Text style={styles.topicTitle}>Topics Covered:</Text>
-
-                <View style={styles.tag}>
-                  <Ionicons name="layers-outline" size={16} color="#444" />
+                <View style={styles.topicBlock}>
+                  <View style={styles.topicHeadingRow}>
+                    <Ionicons name="layers-outline" size={15} color="#5523D2" />
+                    <Text style={styles.topicTitle}>Topics Covered</Text>
+                  </View>
                   <Text style={styles.tagText}>
                     {session.topics?.trim() || "Course content will be covered"}
                   </Text>
@@ -310,7 +357,13 @@ export default function LogsheetScreen() {
                   >
                     <Ionicons name="checkmark-circle" size={18} color="#fff" />
                     <Text style={styles.btnText}>
-                      {isBusy ? "Please wait..." : "Mark Completed"}
+                      {isBusy
+                        ? "Updating..."
+                        : isCompleted
+                          ? "Completed"
+                          : !session.staff_completed
+                            ? "Locked"
+                            : "Mark Completed"}
                     </Text>
                   </TouchableOpacity>
 
@@ -440,12 +493,71 @@ const styles = StyleSheet.create({
   },
   profileText: { fontSize: 15, fontWeight: "700" },
 
-  mainHeading: {
-    fontSize: 25,
-    fontWeight: "800",
-    marginTop: 20,
-    marginBottom: 15,
-    color: "#2E1065",
+  summaryCard: {
+    backgroundColor: "#2E1065",
+    borderRadius: 18,
+    padding: 16,
+    marginTop: 18,
+    marginBottom: 16,
+  },
+  summaryTop: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 14,
+  },
+  summaryLabel: {
+    color: "#DDD6FE",
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  summaryTitle: {
+    color: "#FFFFFF",
+    fontSize: 24,
+    fontWeight: "900",
+    marginTop: 2,
+  },
+  summaryIcon: {
+    width: 46,
+    height: 46,
+    borderRadius: 14,
+    backgroundColor: "#5523D2",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  progressTrack: {
+    height: 8,
+    backgroundColor: "rgba(255,255,255,0.22)",
+    borderRadius: 99,
+    overflow: "hidden",
+  },
+  progressFill: {
+    height: "100%",
+    backgroundColor: "#FACC15",
+    borderRadius: 99,
+  },
+  statRow: {
+    flexDirection: "row",
+    gap: 8,
+    marginTop: 14,
+  },
+  statPill: {
+    flex: 1,
+    backgroundColor: "rgba(255,255,255,0.12)",
+    borderRadius: 12,
+    paddingVertical: 10,
+    alignItems: "center",
+  },
+  statValue: {
+    color: "#FFFFFF",
+    fontSize: 18,
+    fontWeight: "900",
+  },
+  statText: {
+    color: "#DDD6FE",
+    fontSize: 11,
+    fontWeight: "700",
+    marginTop: 2,
   },
 
   emptyCard: {
@@ -462,22 +574,42 @@ const styles = StyleSheet.create({
 
   card: {
     backgroundColor: "#fff",
-    padding: 18,
-    borderRadius: 16,
-    marginBottom: 20,
+    padding: 15,
+    borderRadius: 14,
+    marginBottom: 14,
     shadowColor: "#000",
     shadowOpacity: 0.08,
     shadowRadius: 4,
   },
+  cardCompleted: {
+    borderWidth: 1,
+    borderColor: "#BBF7D0",
+  },
 
-  cardHeader: { flexDirection: "row", alignItems: "center", marginBottom: 10 },
-  sessionTitle: {
-    fontSize: 16,
-    fontWeight: "700",
-    marginLeft: 10,
+  cardHeader: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    marginBottom: 14,
+  },
+  sessionCopy: {
     flex: 1,
-    flexWrap: "wrap",
+    minWidth: 0,
+    paddingRight: 2,
+  },
+  sessionLabel: {
+    fontSize: 11,
+    color: "#6B7280",
+    fontWeight: "800",
+    textTransform: "uppercase",
+  },
+  sessionTitle: {
+    fontSize: 15,
+    fontWeight: "800",
     color: "#111827",
+    marginTop: 4,
+    lineHeight: 22,
+    textAlign: "left",
+    flexShrink: 1,
   },
 
   badge: {
@@ -494,18 +626,32 @@ const styles = StyleSheet.create({
   badgePending: { backgroundColor: "#dbeafe" },
   badgeText: { fontSize: 12, fontWeight: "700" },
 
-  topicTitle: { fontWeight: "600", marginBottom: 5, color: "#374151" },
-
-  tag: {
-    backgroundColor: "#f3f4f6",
-    padding: 8,
-    borderRadius: 10,
-    flexDirection: "row",
-    gap: 6,
-    alignItems: "center",
+  topicBlock: {
+    backgroundColor: "#F8FAFC",
+    paddingVertical: 12,
+    paddingHorizontal: 13,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
     marginBottom: 15,
+    alignItems: "stretch",
+    justifyContent: "flex-start",
   },
-  tagText: { fontSize: 13, color: "#444", flex: 1 },
+  topicHeadingRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 6,
+    marginBottom: 8,
+  },
+  topicTitle: { fontWeight: "800", color: "#374151", fontSize: 13 },
+
+  tagText: {
+    fontSize: 13,
+    color: "#444",
+    lineHeight: 21,
+    textAlign: "left",
+    flexShrink: 1,
+  },
 
   responseBox: {
     backgroundColor: "#f0fdf4",

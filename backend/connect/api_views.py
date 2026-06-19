@@ -13,9 +13,11 @@ from rest_framework import generics, status
 from rest_framework.decorators import api_view, permission_classes, parser_classes
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from rest_framework.permissions import IsAuthenticated, AllowAny, IsAdminUser
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
+from connect.permissions import is_admin_user, is_staff_employee
 # Add this import at the top with your other imports
 from django.contrib.auth.decorators import login_required
 from datetime import datetime
@@ -46,7 +48,7 @@ def get_portal_url(request=None):
 def send_brevo_email(to_email, subject, html_content, text_content=""):
     api_key = os.getenv('BREVO_API_KEY', getattr(settings, 'BREVO_API_KEY', ''))
     from_email = os.getenv('DEFAULT_FROM_EMAIL', getattr(settings, 'DEFAULT_FROM_EMAIL', ''))
-    from_name = os.getenv('DEFAULT_FROM_NAME', getattr(settings, 'DEFAULT_FROM_NAME', 'IIE Connect'))
+    from_name = os.getenv('DEFAULT_FROM_NAME', getattr(settings, 'DEFAULT_FROM_NAME', 'IIE Pulse'))
 
     if not api_key:
         raise RuntimeError('BREVO_API_KEY is not configured')
@@ -113,7 +115,7 @@ from .models import (
     StudentAttendance, StudyMaterial, StudyMaterialAssignment, QuizTest, Question, AssignedTest, UserActivity,
     StaffLeaveRequest, StudentLeaveApplication, SupportRequest, StudentSupportRequest,
     CourseSession, StudentSessionStatus, Student_Session_Progress, DoubtResponse, SessionNotification,
-    Announcement, CounselorLeaveRequest, CounselorSupportRequest,
+    Announcement, CounselorAnnouncement, CounselorLeaveRequest, CounselorSupportRequest,
     Quiz, QuizQuestion, QuizAttempt, QuizAnswer,
     CompletedStudent, SessionCompletionRequest, TestResult,FeePaymentRequest,
     GalleryItem, VlogItem, NewsItem, CalendarEvent, Referral,
@@ -167,10 +169,6 @@ def record_user_logout(user):
             activity.save(update_fields=['logout_time', 'last_seen'])
     except Exception:
         logger.exception("Failed to record user logout for user_id=%s", getattr(user, 'id', None))
-
-
-def is_admin_user(user):
-    return bool(user and user.is_authenticated and (user.is_superuser or user.is_staff))
 
 
 def apply_activity_date_filters(qs, params):
@@ -300,9 +298,17 @@ class LoginView(APIView):
         if not serializer.is_valid():
             return Response(serializer.errors, status=400)
 
-        username = serializer.validated_data['username']
+        username = serializer.validated_data['username'].strip().lower()
         password = serializer.validated_data['password']
         user_type = serializer.validated_data['user_type']
+
+        if user_type == 'student':
+            student = Students.objects.filter(
+                Q(student_id__iexact=username) | Q(email__iexact=username) | Q(user__username__iexact=username)
+            ).select_related('user').first()
+            if student:
+                username = student.user.username
+
         user = authenticate(username=username, password=password)
 
         if user is None:
@@ -364,9 +370,12 @@ class AdminDashboardView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
+        if not is_admin_user(request.user):
+            return Response({'error': 'Admin access required.'}, status=403)
         completed_ids = CompletedStudent.objects.values_list('original_student_id', flat=True)
         return Response({
             'student_count': Students.objects.exclude(student_id__in=completed_ids).count(),
+            'employee_count': Employee.objects.count(),
             'mentor_count': Employee.objects.filter(designation__iexact='mentor').count(),
             'course_count': Courses.objects.count(),
             'batch_count': Batches.objects.count(),
@@ -491,6 +500,8 @@ class CounselorDashboardView(APIView):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def get_next_staff_id(request):
+    if not is_staff_employee(request.user):
+        return Response({'error': 'Access denied.'}, status=403)
     return Response({'staff_id': generate_staff_id()})
 
 
@@ -499,6 +510,8 @@ def get_next_staff_id(request):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def get_next_batch_number(request):
+    if not is_staff_employee(request.user):
+        return Response({'error': 'Access denied.'}, status=403)
     branch = request.query_params.get('branch', '')
     if not branch:
         return Response({'error': 'Branch is required'}, status=400)
@@ -513,6 +526,8 @@ def get_next_batch_number(request):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def get_next_student_id(request):
+    if not is_staff_employee(request.user):
+        return Response({'error': 'Access denied.'}, status=403)
     branch = request.query_params.get('branch', '')
     if not branch:
         return Response({'error': 'Branch is required'}, status=400)
@@ -786,10 +801,10 @@ class EmployeeCreateView(APIView):
                 portal_url = get_portal_url(request)
 
                 send_email_async(
-                    subject='Welcome to IIE Connect — Your Login Credentials',
+                    subject='Welcome to IIE Pulse — Your Login Credentials',
                     message=f"""Dear {first_name},
 
-Welcome to IIE Connect! Your account has been created successfully.
+Welcome to IIE Pulse! Your account has been created successfully.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 YOUR LOGIN CREDENTIALS
@@ -810,15 +825,15 @@ For security, we recommend changing your password after your first login.
 If you have any trouble accessing your account, please contact your administrator.
 
 Best regards,
-IIE Connect Team
+IIE Pulse Team
 Indra Institute of Education
 {portal_url}
 """,
                     recipient_list=[email],
                 )
-                print(f"✅ Welcome email queued for {email}")
+                logger.info("Welcome email queued for employee %s", email)
             except Exception as mail_err:
-                print(f"⚠️ Welcome email queueing failed for {email}: {mail_err}")
+                logger.warning("Welcome email queueing failed for employee %s: %s", email, mail_err)
             # ─────────────────────────────────────────────────────────
 
             return Response({
@@ -1176,8 +1191,13 @@ class StudentCreateView(APIView):
         if not all([student_id_input, first_name, email, mobile_no, date_of_birth, city, state, qualification, course_name, branch]):
             return Response({'error': 'Please fill in all required fields.'}, status=400)
 
-        if User.objects.filter(username=email).exists():
-            return Response({'error': 'This email is already registered!'}, status=400)
+        existing_user = User.objects.filter(username=email).first()
+        if existing_user:
+            linked_employee = Employee.objects.filter(user=existing_user).exists()
+            linked_student = Students.objects.filter(user=existing_user).exists()
+            if existing_user.is_staff or existing_user.is_superuser or linked_employee or linked_student:
+                return Response({'error': 'This email is already registered!'}, status=400)
+            existing_user.delete()
         if Students.objects.filter(email=email).exists():
             return Response({'error': 'Email already exists!'}, status=400)
         if Students.objects.filter(student_id=student_id_input).exists():
@@ -1218,10 +1238,10 @@ class StudentCreateView(APIView):
                 portal_url = get_portal_url(request)
 
                 send_email_async(
-                    subject='Welcome to IIE Connect — Your Login Credentials',
+                    subject='Welcome to IIE Pulse — Your Login Credentials',
                     message=f"""Dear {first_name},
 
-Welcome to IIE Connect! Your student account has been created successfully.
+Welcome to IIE Pulse! Your student account has been created successfully.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 YOUR LOGIN CREDENTIALS
@@ -1242,15 +1262,15 @@ For security, we recommend changing your password after your first login.
 If you have any trouble accessing your account, please contact your counselor or administrator.
 
 Best regards,
-IIE Connect Team
+IIE Pulse Team
 Indra Institute of Education
 {portal_url}
 """,
                     recipient_list=[email],
                 )
-                print(f"✅ Welcome email queued for student {email}")
+                logger.info("Welcome email queued for student %s", email)
             except Exception as mail_err:
-                print(f"⚠️ Welcome email queueing failed for {email}: {mail_err}")
+                logger.warning("Welcome email queueing failed for student %s: %s", email, mail_err)
             # ─────────────────────────────────────────────────────────
 
             return Response({
@@ -1745,8 +1765,10 @@ class TestListCreateView(generics.ListCreateAPIView):
             return QuizTest.objects.none()
     
     def perform_create(self, serializer):
-        # When creating a test, automatically set created_by to the logged-in employee
-        emp = Employee.objects.get(user=self.request.user)
+        try:
+            emp = Employee.objects.get(user=self.request.user)
+        except Employee.DoesNotExist:
+            raise PermissionDenied("Employee profile not found for this account.")
         serializer.save(created_by=emp)
 
 class TestDetailView(generics.RetrieveUpdateDestroyAPIView):
@@ -2149,37 +2171,58 @@ def upload_quiz(request):
     except Employee.DoesNotExist:
         return Response({'error': 'Employee not found'}, status=404)
     
-    batch_id = request.data.get('batch')
-    try:
-        batch = Batches.objects.get(id=batch_id)
-    except Batches.DoesNotExist:
-        return Response({'error': 'Batch not found'}, status=404)
+    batch_id = (request.data.get('batch') or request.data.get('batch_id') or '').strip()
+    batch = None
+    is_practice_quiz = batch_id in ('practice', 'all', 'public', '0')
+    if batch_id and not is_practice_quiz:
+        try:
+            batch = Batches.objects.get(id=batch_id)
+        except Batches.DoesNotExist:
+            return Response({'error': 'Batch not found'}, status=404)
+
+    file = request.FILES.get('source_file')
+    if not file:
+        return Response({'error': 'Quiz file is required'}, status=400)
     
     quiz = Quiz.objects.create(
         title=request.data.get('title', 'Quiz'),
         description=request.data.get('description', ''),
-        batch=batch, 
+        batch=batch,
         created_by=emp,
         duration_minutes=int(request.data.get('duration_minutes', 30)),
         passing_marks=int(request.data.get('passing_marks', 35)),
-        source_file=request.FILES.get('source_file'),
+        difficulty=request.data.get('difficulty', 'medium') or 'medium',
+        source_file=file,
+        is_published=True,
+        publish_date=timezone.now(),
     )
     
     questions_created = 0
-    file = request.FILES.get('source_file')
     if file:
         try:
             file.seek(0)
-            content = file.read().decode('utf-8-sig')
-            reader = csv.DictReader(io.StringIO(content))
+            if file.name.lower().endswith(('.xlsx', '.xls')):
+                import openpyxl
+                workbook = openpyxl.load_workbook(file, data_only=True)
+                sheet = workbook.active
+                headers = [str(cell.value or '').strip() for cell in next(sheet.iter_rows(min_row=1, max_row=1))]
+                reader = [
+                    {headers[idx]: cell.value for idx, cell in enumerate(row) if idx < len(headers)}
+                    for row in sheet.iter_rows(min_row=2)
+                ]
+            else:
+                content = file.read().decode('utf-8-sig')
+                reader = csv.DictReader(io.StringIO(content))
             
             for i, row in enumerate(reader, 1):
-                question_text = row.get('Question') or row.get('question') or ''
-                option_a = row.get('Option_1') or row.get('option_a') or ''
-                option_b = row.get('Option_2') or row.get('option_b') or ''
-                option_c = row.get('Option_3') or row.get('option_c') or ''
-                option_d = row.get('Option_4') or row.get('option_d') or ''
-                correct_answer_text = (row.get('Correct Answer') or row.get('correct_answer') or '').strip()
+                question_text = str(row.get('Question') or row.get('question') or '').strip()
+                option_a = str(row.get('Option_1') or row.get('Option 1') or row.get('option_a') or row.get('A') or '').strip()
+                option_b = str(row.get('Option_2') or row.get('Option 2') or row.get('option_b') or row.get('B') or '').strip()
+                option_c = str(row.get('Option_3') or row.get('Option 3') or row.get('option_c') or row.get('C') or '').strip()
+                option_d = str(row.get('Option_4') or row.get('Option 4') or row.get('option_d') or row.get('D') or '').strip()
+                correct_answer_text = str(row.get('Correct Answer') or row.get('correct_answer') or '').strip()
+                if not question_text or not option_a or not option_b:
+                    continue
                 
                 # Function to find which option matches the correct answer text
                 def find_correct_option(correct_text, opt_a, opt_b, opt_c, opt_d):
@@ -2195,21 +2238,17 @@ def upload_quiz(request):
                     if opt_d and opt_d.lower().strip() == correct_text_lower:
                         return 'D'
                     
-                    # If no match found, default to A
-                    print(f"Warning: Could not match '{correct_text}' with any option")
+                    if correct_text_lower in ('a', '1', 'option 1', 'option_1'):
+                        return 'A'
+                    if correct_text_lower in ('b', '2', 'option 2', 'option_2'):
+                        return 'B'
+                    if correct_text_lower in ('c', '3', 'option 3', 'option_3'):
+                        return 'C'
+                    if correct_text_lower in ('d', '4', 'option 4', 'option_4'):
+                        return 'D'
                     return 'A'
                 
                 correct_answer = find_correct_option(correct_answer_text, option_a, option_b, option_c, option_d)
-                
-                print(f"Row {i}:")
-                print(f"  Question: {question_text[:50]}")
-                print(f"  Option A: {option_a}")
-                print(f"  Option B: {option_b}")
-                print(f"  Option C: {option_c}")
-                print(f"  Option D: {option_d}")
-                print(f"  Correct Answer Text: '{correct_answer_text}'")
-                print(f"  Mapped to Option: {correct_answer}")
-                print("-" * 40)
                 
                 QuizQuestion.objects.create(
                     quiz=quiz, 
@@ -2229,10 +2268,14 @@ def upload_quiz(request):
             quiz.save()
             
         except Exception as e:
-            print(f"Error parsing CSV: {e}")
-            import traceback
-            traceback.print_exc()
+            quiz.delete()
+            logger.exception("Error parsing quiz upload")
+            return Response({'error': f'Could not parse quiz file: {e}'}, status=400)
             
+    if questions_created == 0:
+        quiz.delete()
+        return Response({'error': 'No valid questions found in the uploaded file.'}, status=400)
+
     return Response({'message': 'Quiz created', 'quiz_id': quiz.id, 'questions': questions_created}, status=201)
 
 
@@ -2301,6 +2344,94 @@ def delete_quiz(request, quiz_id):
         return Response(status=204)
     except Quiz.DoesNotExist:
         return Response({'error': 'Not found'}, status=404)
+
+
+def _serialize_quiz_with_questions(quiz, include_answers=False):
+    questions = quiz.questions.all().order_by('question_number')
+    questions_data = []
+    total_marks = 0
+
+    for q in questions:
+        item = {
+            'id': q.id,
+            'question_text': q.question_text,
+            'option_a': q.option_a or '',
+            'option_b': q.option_b or '',
+            'option_c': q.option_c or '',
+            'option_d': q.option_d or '',
+            'marks': q.marks,
+        }
+        if include_answers:
+            item['correct_answer'] = q.correct_answer
+        questions_data.append(item)
+        total_marks += q.marks
+
+    if total_marks == 0 and questions.count() > 0:
+        total_marks = questions.count()
+
+    category = getattr(quiz, 'category', '') or ''
+
+    return {
+        'id': quiz.id,
+        'title': quiz.title,
+        'description': quiz.description,
+        'category': category,
+        'total_questions': questions.count(),
+        'total_marks': total_marks,
+        'duration_minutes': quiz.duration_minutes,
+        'passing_marks': quiz.passing_marks,
+        'max_attempts': quiz.max_attempts,
+        'questions': questions_data,
+    }
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def practice_quizzes(request):
+    """Public practice quizzes (batch-less, published)."""
+    quizzes = Quiz.objects.filter(batch__isnull=True, is_published=True).order_by('-created_at')
+    return Response({
+        'results': [_serialize_quiz_with_questions(quiz, include_answers=True) for quiz in quizzes]
+    })
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def submit_practice_quiz(request, quiz_id):
+    """Score a public practice quiz without requiring student authentication."""
+    try:
+        quiz = Quiz.objects.get(id=quiz_id, batch__isnull=True, is_published=True)
+    except Quiz.DoesNotExist:
+        return Response({'error': 'Practice quiz not found'}, status=404)
+
+    answers_data = request.data.get('answers', {})
+    questions = quiz.questions.all()
+    total_marks = sum(q.marks for q in questions) or questions.count()
+    score = 0
+    correct_count = 0
+    attempted_count = 0
+
+    for question in questions:
+        selected = str(answers_data.get(str(question.id), '')).strip().upper()
+        if selected:
+            attempted_count += 1
+        if selected and selected == str(question.correct_answer).strip().upper():
+            score += question.marks or 1
+            correct_count += 1
+
+    percentage = round((score / total_marks) * 100, 1) if total_marks else 0
+    wrong_count = attempted_count - correct_count
+
+    return Response({
+        'score': score,
+        'total_marks': total_marks,
+        'percentage': percentage,
+        'is_passed': percentage >= quiz.passing_marks,
+        'correct_count': correct_count,
+        'wrong_count': wrong_count,
+        'attempted_count': attempted_count,
+        'total_questions': questions.count(),
+    })
 
 
 @api_view(['GET'])
@@ -2537,6 +2668,9 @@ def student_mark_completed(request):
             return Response({'error': 'Trainer has not completed this session yet.'}, status=400)
 
         # Mark as completed by student
+        if session.staff_completed:
+            status_obj.staff_completed = True
+            status_obj.staff_completed_at = status_obj.staff_completed_at or session.completed_date or timezone.now()
         status_obj.student_status = 'completed'
         status_obj.student_confirmed_at = timezone.now()
         status_obj.save()
@@ -2545,6 +2679,9 @@ def student_mark_completed(request):
         progress, _ = Student_Session_Progress.objects.get_or_create(
             student=student, session=session
         )
+        if session.staff_completed:
+            progress.staff_completed = True
+            progress.staff_completed_at = progress.staff_completed_at or session.completed_date or timezone.now()
         progress.completed = True
         progress.completed_date = timezone.now()
         progress.student_status = 'completed'
@@ -2562,130 +2699,9 @@ def student_mark_completed(request):
         is_course_completed = (total_sessions > 0 and completed_sessions == total_sessions)
 
         if is_course_completed:
-            print(f"🎉 Student {student.first_name} has completed all {total_sessions} sessions!")
-            
-            current_trainer = student.assigned_staff
-
-            # ── Calculate actual attendance percentage ────────────────────
-            att_total = StudentAttendance.objects.filter(student=student).count()
-            att_present = StudentAttendance.objects.filter(student=student, status='Present').count()
-            att_pct = round((att_present / att_total * 100) if att_total > 0 else 0, 1)
-
-            # ── Calculate actual average test score ───────────────────────
-            test_results_qs = TestResult.objects.filter(student=student)
-            avg_score = round(
-                sum(t.percentage for t in test_results_qs) / test_results_qs.count(), 1
-            ) if test_results_qs.count() > 0 else 0
-            # ─────────────────────────────────────────────────────────────
-
-            defaults = {
-                'student_id': student.student_id,
-                'email': student.email,
-                'first_name': student.first_name,
-                'last_name': student.last_name or '',
-                'mobile_no': student.mobile_no,
-                'date_of_birth': student.date_of_birth,
-                'city': student.city,
-                'state': student.state,
-                'qualification': student.qualification,
-                'course': student.course,
-                'gender': student.gender,
-                'branch': student.branch,
-                'batch_number': student.assigned_batch.batch_number if student.assigned_batch else 'N/A',
-                'batch_id': str(student.assigned_batch.id) if student.assigned_batch else 'N/A',
-                'batch_start_date': student.assigned_batch.start_date if student.assigned_batch else timezone.now().date(),
-                'batch_end_date': student.assigned_batch.end_date if student.assigned_batch else timezone.now().date(),
-                'faculty_name': f"{current_trainer.first_name} {current_trainer.last_name or ''}" if current_trainer else 'N/A',
-                'course_name': student.course,
-                'completed_sessions_count': completed_sessions,
-                'total_sessions_count': total_sessions,
-                'attendance_percentage': att_pct,
-                'average_test_score': avg_score,
-                'completion_type': 'full',  # default for new records
-                'completion_percentage': 100,
-            }
-
-            try:
-                completed_student, created = CompletedStudent.objects.get_or_create(
-                    original_student_id=str(student.id),
-                    graduated_from_trainer=current_trainer,
-                    defaults=defaults
-                )
-            except DatabaseError:
-                # Likely the completion_type column is missing in production DB.
-                logger.exception("Database error creating CompletedStudent with completion fields; retrying without completion fields")
-                # Remove completion-specific fields and retry
-                defaults.pop('completion_type', None)
-                defaults.pop('completion_percentage', None)
-                completed_student, created = CompletedStudent.objects.get_or_create(
-                    original_student_id=str(student.id),
-                    graduated_from_trainer=current_trainer,
-                    defaults=defaults
-                )
-            student.is_fully_completed = True
-            student.fully_completed_at = timezone.now()
-            student.save()
-
-
-            if created:
-                print(f"✅ Created CompletedStudent record for trainer: {current_trainer.first_name if current_trainer else 'Unknown'}")
-            else:
-                # Update existing record to full completion
-                try:
-                    completed_student.completion_type = 'full'
-                    completed_student.completion_percentage = 100
-                    completed_student.save()
-                    print(f"✅ Updated CompletedStudent record to full completion")
-                except DatabaseError:
-                    logger.exception("Database error updating CompletedStudent completion_type/completion_percentage")
-
-
-            # ========== DELETE ALL PROGRESS RECORDS FOR THIS STUDENT ==========
-            Student_Session_Progress.objects.filter(student=student).delete()
-            StudentSessionStatus.objects.filter(student=student).delete()
-            DoubtResponse.objects.filter(doubt__student=student).delete()
-            
-            # ========== Remove student from current batch and staff ==========
-            old_batch = student.assigned_batch
-            old_staff = student.assigned_staff
-            
-            student.assigned_batch = None
-            student.assigned_staff = None
-            student.save()
-            print(f"✅ Removed student from batch '{old_batch.batch_number if old_batch else 'None'}' and staff")
-            
-            # ========== Send email notification to student (async) ==========
-            if student.email:
-                try:
-                    send_email_async(
-                        subject="🎉 Course Completed! Congratulations!",
-                        message=f"""Dear {student.first_name},
-
-CONGRATULATIONS! 🎉
-
-You have successfully completed all {total_sessions} sessions of your course.
-
-Course: {student.course}
-Completed with Trainer: {current_trainer.first_name} {current_trainer.last_name or ''}
-Completion Date: {timezone.now().strftime('%Y-%m-%d')}
-Attendance: {att_pct}%
-Average Test Score: {avg_score}%
-
-You have been moved to the completed students list.
-Your completion certificate will be available shortly.
-
-Best regards,
-IIE Connect Team
-""",
-                        recipient_list=[student.email],
-                    )
-                    print(f"✅ Completion email queued for student {student.email}")
-                except Exception as e:
-                    print(f"❌ Failed to queue email to student: {e}")
-            
             return Response({
                 'success': True, 
-                'message': f'Congratulations! You have completed all {total_sessions} sessions!',
+                'message': 'All sessions confirmed. Your mentor will complete or request reassignment.',
                 'course_completed': True
             })
         
@@ -2938,6 +2954,126 @@ class CompletedStudentListView(generics.ListAPIView):
 
 # ── COMPLETION REQUESTS ───────────────────────────────────────────────────────
 
+def _completed_student_defaults(student, trainer, completed_sessions, total_sessions):
+    att_total = StudentAttendance.objects.filter(student=student).count()
+    att_present = StudentAttendance.objects.filter(student=student, status='Present').count()
+    att_pct = round((att_present / att_total * 100) if att_total > 0 else 0, 1)
+
+    test_results_qs = TestResult.objects.filter(student=student)
+    avg_score = round(
+        sum(t.percentage for t in test_results_qs) / test_results_qs.count(), 1
+    ) if test_results_qs.count() > 0 else 0
+
+    batch = student.assigned_batch
+    trainer_name = f"{trainer.first_name} {trainer.last_name or ''}".strip() if trainer else 'N/A'
+
+    return {
+        'student_id': student.student_id,
+        'email': student.email,
+        'first_name': student.first_name,
+        'last_name': student.last_name or '',
+        'mobile_no': student.mobile_no,
+        'date_of_birth': student.date_of_birth,
+        'city': student.city,
+        'state': student.state,
+        'qualification': student.qualification,
+        'course': student.course,
+        'gender': student.gender,
+        'branch': student.branch,
+        'batch_number': batch.batch_number if batch else 'N/A',
+        'batch_id': str(batch.id) if batch else 'N/A',
+        'batch_start_date': batch.start_date if batch else timezone.now().date(),
+        'batch_end_date': batch.end_date if batch else timezone.now().date(),
+        'faculty_name': trainer_name,
+        'course_name': student.course,
+        'completed_sessions_count': completed_sessions,
+        'total_sessions_count': total_sessions,
+        'attendance_percentage': att_pct,
+        'average_test_score': avg_score,
+        'completion_type': 'full',
+        'completion_percentage': 100,
+    }
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def complete_student_by_trainer(request, student_id):
+    try:
+        trainer = Employee.objects.get(user=request.user)
+        student = Students.objects.select_related('assigned_batch', 'assigned_staff').get(id=student_id)
+    except Employee.DoesNotExist:
+        return Response({'error': 'Employee not found'}, status=404)
+    except Students.DoesNotExist:
+        return Response({'error': 'Student not found'}, status=404)
+
+    if student.assigned_staff_id != trainer.id and not (request.user.is_staff or request.user.is_superuser):
+        return Response({'error': 'Only the assigned mentor can complete this student.'}, status=403)
+
+    if not student.assigned_batch:
+        return Response({'error': 'Student is not assigned to any batch.'}, status=400)
+
+    total_sessions = CourseSession.objects.filter(batch=student.assigned_batch).count()
+    student_completed = Student_Session_Progress.objects.filter(
+        student=student,
+        session__batch=student.assigned_batch,
+        completed=True,
+        student_status='completed',
+    ).count()
+    mentor_completed = Student_Session_Progress.objects.filter(
+        student=student,
+        session__batch=student.assigned_batch,
+        staff_completed=True,
+    ).count()
+
+    if total_sessions == 0:
+        return Response({'error': 'No sessions found for this batch.'}, status=400)
+    if mentor_completed < total_sessions or student_completed < total_sessions:
+        return Response({
+            'error': 'Complete all mentor sessions and wait for student confirmation before moving to completed.'
+        }, status=400)
+
+    defaults = _completed_student_defaults(student, trainer, student_completed, total_sessions)
+
+    with transaction.atomic():
+        try:
+            completed_student, created = CompletedStudent.objects.get_or_create(
+                original_student_id=str(student.id),
+                graduated_from_trainer=trainer,
+                defaults=defaults,
+            )
+        except DatabaseError:
+            logger.exception("Database error creating CompletedStudent; retrying without optional completion fields")
+            defaults.pop('completion_type', None)
+            defaults.pop('completion_percentage', None)
+            completed_student, created = CompletedStudent.objects.get_or_create(
+                original_student_id=str(student.id),
+                graduated_from_trainer=trainer,
+                defaults=defaults,
+            )
+
+        if not created:
+            for key, value in defaults.items():
+                setattr(completed_student, key, value)
+            completed_student.graduated_from_trainer = trainer
+            completed_student.save()
+
+        old_batch = student.assigned_batch
+        student.assigned_batch = None
+        student.assigned_staff = None
+        student.save()
+
+        Student_Session_Progress.objects.filter(student=student).delete()
+        StudentSessionStatus.objects.filter(student=student).delete()
+        DoubtResponse.objects.filter(doubt__student=student).delete()
+
+    return Response({
+        'success': True,
+        'message': f"{student.first_name} moved to completed students.",
+        'completed_student_id': completed_student.id,
+        'previous_batch': old_batch.batch_number if old_batch else None,
+    })
+
+
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def request_completion(request, student_id):
@@ -2980,15 +3116,21 @@ def counselor_pending_requests(request):
             
             data.append({
                 'id': req.id,
+                'student_pk': req.student.id,
                 'student_name': f"{req.student.first_name} {req.student.last_name or ''}".strip(),
                 'student_id': req.student.student_id,
+                'trainer_id': req.trainer.id if req.trainer else None,
                 'trainer_name': f"{req.trainer.first_name} {req.trainer.last_name or ''}".strip(),
+                'batch_id': batch.id if batch else None,
                 # Get batch info with fallbacks:
                 'batch_number': batch.batch_number if batch else req.student.assigned_batch.batch_number if req.student.assigned_batch else 'N/A',
                 'course_name': batch.course_name.course_name if batch and batch.course_name else req.student.course if req.student.course else 'N/A',
+                'course_id': batch.course_name.id if batch and batch.course_name else None,
                 'course_type': batch.course_type if batch else 'N/A',
                 'batch_timing': batch.batch_timing if batch else 'N/A',
                 'branch': batch.branch if batch else req.student.branch,
+                'counselor_id': req.counselor.id if req.counselor else None,
+                'counselor_branch': req.counselor.branch if req.counselor else req.student.branch,
                 'sessions_completed': req.sessions_completed,
                 'total_sessions': req.total_sessions,
                 'topics_covered': req.topics_covered,
@@ -3096,67 +3238,171 @@ def counselor_student_details(request):
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def counselor_reassign_student(request, request_id):
-    """Counselor reassigns a completion request/student to another counselor."""
+    """Counselor reassigns a completion request/student to staff and a batch."""
     try:
         counselor = Employee.objects.get(user=request.user)
         completion_req = SessionCompletionRequest.objects.get(id=request_id, counselor=counselor)
+        target_counselor_id = request.data.get('target_counselor_id') or counselor.id
         new_trainer_id = request.data.get('new_trainer_id')
+        batch_mode = request.data.get('batch_mode', 'existing')
+        batch_id = request.data.get('batch_id')
         counselor_notes = request.data.get('notes', '')
 
-        if not new_trainer_id:
-            return Response({'error': 'Please select a counselor'}, status=400)
-
         try:
-            # `new_trainer` stores the selected receiving counselor for this workflow.
-            new_trainer = Employee.objects.get(id=new_trainer_id)
+            target_counselor = Employee.objects.get(id=target_counselor_id, designation__iexact='counselor')
         except Employee.DoesNotExist:
             return Response({'error': 'Selected counselor not found'}, status=404)
 
-        if (new_trainer.designation or '').lower() != 'counselor':
-            return Response({'error': 'Selected employee must be a counselor'}, status=400)
+        if not new_trainer_id:
+            return Response({'error': 'Please select a staff member'}, status=400)
+
+        try:
+            new_trainer = Employee.objects.get(id=new_trainer_id)
+        except Employee.DoesNotExist:
+            return Response({'error': 'Selected staff not found'}, status=404)
+
+        if (new_trainer.designation or '').lower() not in ('trainer', 'mentor'):
+            return Response({'error': 'Selected employee must be a staff/mentor'}, status=400)
+        if new_trainer.branch != target_counselor.branch:
+            return Response({'error': 'Selected staff must be from the selected counselor branch'}, status=400)
 
         student = completion_req.student
-        student_id_before = student.student_id
+        source_batch = completion_req.batch or student.assigned_batch
+        if not source_batch:
+            return Response({'error': 'Original batch not found for this request'}, status=400)
 
-        print(
-            "DEBUG counselor reassign current counselor: "
-            f"id={counselor.id}, name={counselor.first_name} {counselor.last_name or ''}, "
-            f"branch={counselor.branch}"
-        )
-        print(
-            "DEBUG counselor reassign selected counselor: "
-            f"id={new_trainer.id}, name={new_trainer.first_name} {new_trainer.last_name or ''}, "
-            f"branch={new_trainer.branch}"
-        )
-        print(f"DEBUG counselor reassign student id before: {student_id_before}")
+        if batch_mode not in ('new', 'existing'):
+            return Response({'error': 'Invalid batch option'}, status=400)
+
+        def copy_student_progress_to_batch(target_batch, copy_batch_sessions=False):
+            source_sessions = CourseSession.objects.filter(batch=source_batch).order_by('session_number')
+            source_by_number = {session.session_number: session for session in source_sessions}
+
+            if copy_batch_sessions:
+                for source_session in source_sessions:
+                    CourseSession.objects.get_or_create(
+                        batch=target_batch,
+                        session_number=source_session.session_number,
+                        defaults={
+                            'title': source_session.title,
+                            'topics': source_session.topics,
+                            'staff_completed': source_session.staff_completed,
+                            'session_enabled': source_session.session_enabled,
+                            'completed_date': source_session.completed_date,
+                        }
+                    )
+
+            target_sessions = CourseSession.objects.filter(batch=target_batch).order_by('session_number')
+            for target_session in target_sessions:
+                source_session = source_by_number.get(target_session.session_number)
+                if not source_session:
+                    continue
+
+                old_progress = Student_Session_Progress.objects.filter(
+                    student=student,
+                    session=source_session
+                ).first()
+                old_status = StudentSessionStatus.objects.filter(
+                    student=student,
+                    session=source_session
+                ).first()
+                if not old_progress and not old_status and not source_session.staff_completed:
+                    continue
+
+                staff_done = bool(
+                    (old_progress and old_progress.staff_completed) or
+                    (old_status and old_status.staff_completed) or
+                    source_session.staff_completed
+                )
+                student_status = (
+                    old_progress.student_status if old_progress else
+                    old_status.student_status if old_status else
+                    'pending' if staff_done else 'not_started'
+                )
+                completed = bool(old_progress and old_progress.completed) or student_status == 'completed'
+
+                progress, _ = Student_Session_Progress.objects.get_or_create(
+                    student=student,
+                    session=target_session
+                )
+                progress.staff_completed = staff_done
+                progress.staff_completed_at = (
+                    old_progress.staff_completed_at if old_progress else
+                    old_status.staff_completed_at if old_status else
+                    source_session.completed_date
+                )
+                progress.completed = completed
+                progress.completed_date = old_progress.completed_date if old_progress else None
+                progress.student_status = student_status
+                progress.student_confirmed_at = (
+                    old_progress.student_confirmed_at if old_progress else
+                    old_status.student_confirmed_at if old_status else None
+                )
+                progress.save()
+
+                status_obj, _ = StudentSessionStatus.objects.get_or_create(
+                    student=student,
+                    session=target_session
+                )
+                status_obj.staff_completed = staff_done
+                status_obj.staff_completed_at = progress.staff_completed_at
+                status_obj.student_status = 'completed' if completed else ('pending' if staff_done else 'pending')
+                status_obj.student_confirmed_at = progress.student_confirmed_at
+                status_obj.save()
 
         with transaction.atomic():
+            if batch_mode == 'new':
+                new_batch = Batches.objects.create(
+                    batch_number=generate_batch_number(new_trainer.branch),
+                    course_type=source_batch.course_type,
+                    course_name=source_batch.course_name,
+                    faculty=new_trainer,
+                    start_date=source_batch.start_date,
+                    end_date=source_batch.end_date,
+                    batch_timing=source_batch.batch_timing,
+                    branch=new_trainer.branch,
+                )
+                copy_student_progress_to_batch(new_batch, copy_batch_sessions=True)
+                target_batch = new_batch
+            else:
+                if not batch_id:
+                    return Response({'error': 'Please select a batch'}, status=400)
+                try:
+                    target_batch = Batches.objects.get(id=batch_id, faculty=new_trainer)
+                except Batches.DoesNotExist:
+                    return Response({'error': 'Selected batch not found for this staff'}, status=404)
+                copy_student_progress_to_batch(target_batch, copy_batch_sessions=False)
+
             student.previous_trainer = completion_req.trainer
-            student.previous_batch = completion_req.batch
+            student.previous_batch = source_batch
             student.is_transferred = True
-            student.branch = new_trainer.branch
-            student.assigned_staff = None
-            student.assigned_batch = None
+            student.branch = target_batch.branch
+            student.assigned_staff = new_trainer
+            student.assigned_batch = target_batch
             student.transfer_date = timezone.now()
             student.save()
 
-            completion_req.counselor = new_trainer
             completion_req.new_trainer = new_trainer
             completion_req.counselor_notes = counselor_notes
+            completion_req.status = 'reassigned'
+            completion_req.reviewed_at = timezone.now()
+            completion_req.reviewed_by = request.user
             completion_req.reassigned_at = timezone.now()
             completion_req.save()
 
         student.refresh_from_db()
-        print(f"DEBUG counselor reassign student id after: {student.student_id}")
 
         return Response({
             'success': True,
-            'message': 'Student reassigned to counselor successfully',
+            'message': 'Student reassigned successfully',
             'details': {
                 'student_name': f"{student.first_name} {student.last_name or ''}".strip(),
                 'student_id': student.student_id,
-                'receiving_counselor': f"{new_trainer.first_name} {new_trainer.last_name or ''}".strip(),
-                'receiving_branch': new_trainer.branch,
+                'receiving_counselor': f"{target_counselor.first_name} {target_counselor.last_name or ''}".strip(),
+                'receiving_staff': f"{new_trainer.first_name} {new_trainer.last_name or ''}".strip(),
+                'receiving_batch': target_batch.batch_number,
+                'receiving_branch': target_batch.branch,
+                'batch_created': batch_mode == 'new',
             }
         })
 
@@ -3270,6 +3516,8 @@ def admin_student_monitoring(request):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def admin_branch_attendance(request):
+    if not is_admin_user(request.user):
+        return Response({'error': 'Admin access required.'}, status=403)
     from django.db.models import Q, Avg
     branch = request.query_params.get('branch')
     staff_id = request.query_params.get('staff_id')
@@ -3876,6 +4124,14 @@ def extract_pdf_text(logsheet_path):
     return full_text
 
 
+def is_valid_pdf_file(logsheet_path):
+    try:
+        with open(logsheet_path, 'rb') as pdf_file:
+            return pdf_file.read(5) == b'%PDF-'
+    except OSError:
+        return False
+
+
 def parse_sessions_from_text(full_text, batch_id=None, debug=False):
     """
     Parse session information from extracted PDF text.
@@ -4045,8 +4301,7 @@ def extract_sessions_from_logsheet(batch, debug=False):
     If batch logsheet file is missing, fallback to course logsheet.
     """
     try:
-        pdf_field = None
-        source = None
+        candidates = []
 
         # 1. Try batch logsheet only if actual file exists
         if batch.course_logsheet:
@@ -4059,11 +4314,10 @@ def extract_sessions_from_logsheet(batch, debug=False):
                 print(f"[EXTRACT] Batch {batch.id}: Batch file exists={os.path.exists(batch_path) if batch_path else False}")
 
             if batch_path and os.path.exists(batch_path):
-                pdf_field = batch.course_logsheet
-                source = "batch.course_logsheet"
+                candidates.append((batch.course_logsheet, "batch.course_logsheet"))
 
-        # 2. If batch file missing, fallback to course logsheet
-        if not pdf_field and batch.course_name and batch.course_name.course_logsheet:
+        # 2. Fall back to course logsheet if the batch file is missing or unreadable.
+        if batch.course_name and batch.course_name.course_logsheet:
             course_path = getattr(batch.course_name.course_logsheet, "path", None)
 
             if debug:
@@ -4073,35 +4327,49 @@ def extract_sessions_from_logsheet(batch, debug=False):
                 print(f"[EXTRACT] Batch {batch.id}: Course file exists={os.path.exists(course_path) if course_path else False}")
 
             if course_path and os.path.exists(course_path):
-                pdf_field = batch.course_name.course_logsheet
-                source = "course.course_logsheet"
+                candidates.append((batch.course_name.course_logsheet, "course.course_logsheet"))
 
-        if not pdf_field:
+        if not candidates:
             if debug:
                 print(f"[EXTRACT] Batch {batch.id}: No valid existing logsheet file found")
+            batch._logsheet_extract_error = 'No uploaded logsheet file was found on disk. Please upload the PDF logsheet again.'
             return []
 
-        logsheet_path = getattr(pdf_field, "path", None)
+        last_error = ''
+        for pdf_field, source in candidates:
+            logsheet_path = getattr(pdf_field, "path", None)
 
-        if debug:
-            print(f"[EXTRACT] Batch {batch.id}: Selected Source={source}")
-            print(f"[EXTRACT] Batch {batch.id}: Selected Field name={pdf_field.name}")
-            print(f"[EXTRACT] Batch {batch.id}: Selected Path={logsheet_path}")
-
-        full_text = extract_pdf_text(logsheet_path)
-
-        if not full_text.strip():
             if debug:
-                print(f"[EXTRACT] Batch {batch.id}: No text extracted from PDF")
-            return []
+                print(f"[EXTRACT] Batch {batch.id}: Selected Source={source}")
+                print(f"[EXTRACT] Batch {batch.id}: Selected Field name={pdf_field.name}")
+                print(f"[EXTRACT] Batch {batch.id}: Selected Path={logsheet_path}")
 
-        if debug:
-            print(f"[EXTRACT] Batch {batch.id}: Extracted {len(full_text)} chars from PDF")
-            print(f"[EXTRACT] Batch {batch.id}: First 1000 chars:\n{full_text[:1000]}")
+            if not logsheet_path or not is_valid_pdf_file(logsheet_path):
+                last_error = f'{pdf_field.name} is not a valid PDF file. Please re-upload the original PDF logsheet.'
+                if debug:
+                    print(f"[EXTRACT] Batch {batch.id}: {last_error}")
+                continue
 
-        sessions_data = parse_sessions_from_text(full_text, batch_id=batch.id, debug=debug)
+            full_text = extract_pdf_text(logsheet_path)
 
-        return sessions_data
+            if not full_text.strip():
+                last_error = f'Could not read text from {pdf_field.name}. The PDF may be scanned, image-only, or corrupted.'
+                if debug:
+                    print(f"[EXTRACT] Batch {batch.id}: No text extracted from PDF")
+                continue
+
+            if debug:
+                print(f"[EXTRACT] Batch {batch.id}: Extracted {len(full_text)} chars from PDF")
+                print(f"[EXTRACT] Batch {batch.id}: First 1000 chars:\n{full_text[:1000]}")
+
+            sessions_data = parse_sessions_from_text(full_text, batch_id=batch.id, debug=debug)
+            if sessions_data:
+                return sessions_data
+
+            last_error = f'No session rows could be detected in {pdf_field.name}. Please check the logsheet format.'
+
+        batch._logsheet_extract_error = last_error or 'Could not extract sessions from the uploaded logsheet.'
+        return []
 
     except Exception as e:
         print(f"[EXTRACT] ERROR Batch {batch.id}: {type(e).__name__}: {str(e)}")
@@ -4152,7 +4420,10 @@ def extract_and_store_sessions(request, batch_id):
         sessions_data = extract_sessions_from_logsheet(batch, debug=True)
         
         if not sessions_data:
+            specific_error = getattr(batch, '_logsheet_extract_error', '')
             error_msg = (
+                (specific_error + ' ') if specific_error else ''
+            ) + (
                 'Could not extract any sessions from the PDF logsheet. '
                 'Supported formats: "Session 1", "Module-1", "Day 1", "1. Topic", "1) Topic", '
                 '"1 - Topic", "1: Topic", "Session 61: WEB ARCHITECTURE", or table format with numbers. '
@@ -4327,10 +4598,14 @@ def student_quizzes(request):
         if not student.assigned_batch:
             return Response({'results': []})
         
+        quiz_filter = Q(batch=student.assigned_batch)
+        if student.assigned_staff_id:
+            quiz_filter |= Q(created_by=student.assigned_staff)
+
         quizzes = Quiz.objects.filter(
-            batch=student.assigned_batch,
+            quiz_filter,
             is_published=True
-        ).order_by('-created_at')
+        ).distinct().order_by('-created_at')
         
         data = []
         for quiz in quizzes:
@@ -4382,8 +4657,10 @@ def student_take_quiz(request, quiz_id):
         student = Students.objects.get(user=request.user)
         quiz = Quiz.objects.get(id=quiz_id, is_published=True)
         
-        # Check if student is in the batch
-        if student.assigned_batch != quiz.batch:
+        assigned_to_batch = bool(student.assigned_batch and quiz.batch_id == student.assigned_batch_id)
+        mentor_owned_quiz = bool(student.assigned_staff_id and quiz.created_by_id == student.assigned_staff_id)
+
+        if not assigned_to_batch and not mentor_owned_quiz:
             return Response({'error': 'This quiz is not assigned to your batch'}, status=400)
         
         # Check attempt limit
@@ -4578,14 +4855,16 @@ def student_assigned_tests(request):
     if not student.assigned_batch:
         return Response([])
 
-    # ── Only tests assigned to THIS student's batch ──
+    # Only tests assigned to THIS student's batch.
     assigned = AssignedTest.objects.filter(
         batch=student.assigned_batch
-    ).select_related('test')
+    ).select_related('test').order_by('-assigned_date')
 
     data = []
+    assigned_test_ids = set()
     for a in assigned:
         test = a.test
+        assigned_test_ids.add(test.id)
         questions = Question.objects.filter(test=test)
         data.append({
             'id': a.id,
@@ -4595,6 +4874,25 @@ def student_assigned_tests(request):
             'total_questions': questions.count(),
             'assigned_date': a.assigned_date if hasattr(a, 'assigned_date') else None,
         })
+
+    # Legacy safety: older mentor-created tests sometimes exist without an
+    # AssignedTest row, so include mentor-owned tests without duplicates.
+    if student.assigned_staff:
+        mentor_tests = QuizTest.objects.filter(
+            created_by=student.assigned_staff
+        ).exclude(id__in=assigned_test_ids).order_by('-created_at')
+        for test in mentor_tests:
+            questions = Question.objects.filter(test=test)
+            if not questions.exists():
+                continue
+            data.append({
+                'id': -test.id,
+                'test_id': test.id,
+                'test_title': test.title,
+                'test_description': test.description,
+                'total_questions': questions.count(),
+                'assigned_date': test.created_at,
+            })
 
     return Response(data)
 
@@ -4644,8 +4942,9 @@ def student_take_test(request, test_id):
             test=test,
             batch=student.assigned_batch
         ).exists()
+        mentor_owned_test = bool(student.assigned_staff_id and test.created_by_id == student.assigned_staff_id)
         
-        if not assigned_exists:
+        if not assigned_exists and not mentor_owned_test:
             return Response({'error': 'This test is not assigned to your batch'}, status=400)
         
         # ✅ ONE TIME ATTEMPT - Check if already taken
@@ -4801,7 +5100,6 @@ def get_test_questions(request, test_id):
                 'option2': q.option2,
                 'option3': q.option3 or '',
                 'option4': q.option4 or '',
-                'correct_answer': correct_option,  # Send letter for frontend reference
             })
         
         return Response({
@@ -5161,7 +5459,7 @@ def download_completion_report(request, student_id):
     # ── Footer ───────────────────────────────────────────────────────────────
     story.append(HRFlowable(width=W, thickness=1, color=SLATE, spaceAfter=6))
     story.append(Paragraph(
-        'This is an auto-generated report from IIE Connect. For queries contact administration.',
+        'This is an auto-generated report from IIE Pulse. For queries contact administration.',
         footer_style
     ))
 
@@ -5230,41 +5528,21 @@ def delete_question(request, question_id):
 def forgot_password(request):
     email = request.data.get('email', '').strip().lower()
 
-    # ── DEBUG ─────────────────────────────────────────────────────────────
-    all_users = User.objects.all()
-    print(f"🔍 Looking for email: '{email}'")
-    print(f"🔍 Total users in DB: {all_users.count()}")
-    for u in all_users[:10]:
-        print(f"   → username='{u.username}' | email='{u.email}'")
-    # ─────────────────────────────────────────────────────────────────────
-
     if not email:
         return Response({'error': 'Email is required'}, status=400)
 
-    user = None
-    try:
-        user = User.objects.get(username=email)
-        print(f"✅ Found by username: {user.username}")
-    except User.DoesNotExist:
-        try:
-            user = User.objects.get(email=email)
-            print(f"✅ Found by email: {user.email}")
-        except User.DoesNotExist:
-            print(f"❌ Not found by username or email")
+    user = User.objects.filter(Q(username=email) | Q(email=email)).first()
 
     if not user:
         return Response({'error': 'No account found with this email'}, status=404)
 
-    # ── Generate OTP ──────────────────────────────────────────────────────
     otp = str(random.randint(100000, 999999))
     cache.set(f'otp_{email}', otp, timeout=600)
-    print(f"✅ OTP generated: {otp} for {email}")
 
-    # ── Send email (async) ────────────────────────────────────────────────────
     try:
         portal_url = get_portal_url(request)
         send_email_async(
-            subject='IIE Connect — Password Reset OTP',
+            subject='IIE Pulse — Password Reset OTP',
             message=f"""Dear {user.first_name or user.username},
 
 Your OTP for password reset is:
@@ -5276,14 +5554,13 @@ This OTP is valid for 10 minutes.
 If you did not request this, please ignore this email.
 
 Best regards,
-IIE Connect Team
+IIE Pulse Team
 {portal_url}
 """,
             recipient_list=[email],
         )
-        print(f"✅ OTP email queued for {email}")
-    except Exception as e:
-        print(f"❌ Email queueing error: {e}")
+    except Exception:
+        logger.exception('Failed to queue password reset email for %s', email)
 
     return Response({'message': 'OTP sent successfully'})
 
@@ -5291,44 +5568,36 @@ IIE Connect Team
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def reset_password(request):
+    from django.contrib.auth.password_validation import validate_password
+    from django.core.exceptions import ValidationError
+
     email = request.data.get('email', '').strip().lower()
     otp = request.data.get('otp', '').strip()
     new_password = request.data.get('new_password', '').strip()
 
-    print(f"🔍 Reset attempt: email='{email}' otp='{otp}'")
-
     if not all([email, otp, new_password]):
         return Response({'error': 'All fields are required'}, status=400)
 
-    if len(new_password) < 6:
-        return Response({'error': 'Password must be at least 6 characters'}, status=400)
-
-    # ── Verify OTP ────────────────────────────────────────────────────────
     cached_otp = cache.get(f'otp_{email}')
-    print(f"🔍 Cached OTP: '{cached_otp}' | Entered OTP: '{otp}'")
 
     if not cached_otp:
         return Response({'error': 'OTP has expired. Please request a new one'}, status=400)
     if cached_otp != otp:
         return Response({'error': 'Invalid OTP'}, status=400)
 
-    # ── Reset password ────────────────────────────────────────────────────
-    user = None
-    try:
-        user = User.objects.get(username=email)
-    except User.DoesNotExist:
-        try:
-            user = User.objects.get(email=email)
-        except User.DoesNotExist:
-            pass
+    user = User.objects.filter(Q(username=email) | Q(email=email)).first()
 
     if not user:
         return Response({'error': 'User not found'}, status=404)
 
+    try:
+        validate_password(new_password, user)
+    except ValidationError as exc:
+        return Response({'error': ' '.join(exc.messages)}, status=400)
+
     user.set_password(new_password)
     user.save()
     cache.delete(f'otp_{email}')
-    print(f"✅ Password reset for {email}")
 
     return Response({'message': 'Password reset successfully'})
 
@@ -5340,7 +5609,17 @@ def reset_password(request):
 @permission_classes([IsAuthenticated])
 def student_fee_details(request):
     try:
-        student = Students.objects.get(user=request.user)
+        student_id = request.query_params.get('student_id') or request.query_params.get('student')
+        if student_id:
+            employee = Employee.objects.filter(user=request.user).first()
+            if not (is_admin_user(request.user) or employee):
+                return Response({'error': 'Access denied'}, status=403)
+            student_qs = Students.objects.all()
+            if employee and not is_admin_user(request.user):
+                student_qs = student_qs.filter(branch=employee.branch)
+            student = student_qs.get(id=student_id)
+        else:
+            student = Students.objects.get(user=request.user)
         fee = FeePayment.objects.filter(student=student).order_by('-created_at').first()
         if not fee:
             return Response({'fee': None})
@@ -5370,9 +5649,14 @@ def student_fee_details(request):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def admin_fee_list(request):
-    """Admin views all fee records"""
+    """Admin views all fee records; counselors/staff view their branch."""
+    employee = Employee.objects.filter(user=request.user).first()
+    if not is_admin_user(request.user) and not employee:
+        return Response({'error': 'Access denied.'}, status=403)
     fees = FeePayment.objects.select_related('student', 'batch').order_by('-created_at')
     branch = request.query_params.get('branch')
+    if employee and not is_admin_user(request.user):
+        branch = employee.branch
     if branch:
         fees = fees.filter(student__branch=branch)
 
@@ -5785,7 +6069,7 @@ Balance Due: Rs. {fee.balance}
 Please review and approve/reject in the Fee Management → Payment Requests section.
 
 Best regards,
-IIE Connect System
+IIE Pulse System
 """,
                     recipient_list=admin_emails,
                 )
@@ -5907,7 +6191,7 @@ Remaining Balance: Rs. {fee.balance}
 Status: {'Fully Paid' if fee.is_fully_paid else 'Partial Payment'}
 
 Best regards,
-IIE Connect Team
+IIE Pulse Team
 """,
                     recipient_list=[pay_req.student.email],
                 )
@@ -5956,8 +6240,8 @@ class CounselorAnnouncementListView(generics.ListAPIView):
         user = self.request.user
         counselor = Employee.objects.filter(user=user, designation__iexact='counselor').first()
         if not counselor:
-            return Announcement.objects.none()
-        return Announcement.objects.filter(created_by=user).order_by('-created_at')
+            return CounselorAnnouncement.objects.none()
+        return CounselorAnnouncement.objects.filter(created_by=user).order_by('-created_at')
 
     def list(self, request, *args, **kwargs):
         try:
@@ -5984,7 +6268,7 @@ class CounselorAnnouncementCreateView(generics.CreateAPIView):
             raise PermissionDenied("Only counselors can use this endpoint.")
         
         # Save the announcement first
-        announcement = serializer.save(created_by=user)
+        announcement = serializer.save(created_by=user, branch=emp.branch)
         
         # Handle specific students
         specific_student_ids = self.request.data.get('specific_student_ids', [])
@@ -6000,7 +6284,7 @@ class CounselorAnnouncementCreateView(generics.CreateAPIView):
 def counselor_update_announcement(request, pk):
     try:
         Employee.objects.get(user=request.user, designation='counselor')
-        ann = Announcement.objects.get(id=pk, created_by=request.user)
+        ann = CounselorAnnouncement.objects.get(id=pk, created_by=request.user)
         serializer = CounselorAnnouncementSerializer(ann, data=request.data, partial=True)
         if serializer.is_valid():
             serializer.save()
@@ -6008,7 +6292,7 @@ def counselor_update_announcement(request, pk):
         return Response(serializer.errors, status=400)
     except Employee.DoesNotExist:
         return Response({'error': 'Permission denied'}, status=403)
-    except Announcement.DoesNotExist:
+    except CounselorAnnouncement.DoesNotExist:
         return Response({'error': 'Not found'}, status=404)
 
 
@@ -6017,13 +6301,13 @@ def counselor_update_announcement(request, pk):
 def counselor_toggle_announcement(request, pk):
     try:
         Employee.objects.get(user=request.user, designation='counselor')
-        ann = Announcement.objects.get(id=pk, created_by=request.user)
+        ann = CounselorAnnouncement.objects.get(id=pk, created_by=request.user)
         ann.is_published = not ann.is_published
         ann.save()
         return Response({'is_published': ann.is_published})
     except Employee.DoesNotExist:
         return Response({'error': 'Permission denied'}, status=403)
-    except Announcement.DoesNotExist:
+    except CounselorAnnouncement.DoesNotExist:
         return Response({'error': 'Not found'}, status=404)
 
 
@@ -6032,11 +6316,11 @@ def counselor_toggle_announcement(request, pk):
 def counselor_delete_announcement(request, pk):
     try:
         Employee.objects.get(user=request.user, designation='counselor')
-        Announcement.objects.get(id=pk, created_by=request.user).delete()
+        CounselorAnnouncement.objects.get(id=pk, created_by=request.user).delete()
         return Response(status=204)
     except Employee.DoesNotExist:
         return Response({'error': 'Permission denied'}, status=403)
-    except Announcement.DoesNotExist:
+    except CounselorAnnouncement.DoesNotExist:
         return Response({'error': 'Not found'}, status=404)
 
 
@@ -6077,7 +6361,7 @@ def branch_announcements(request):
             if creator_emp and (creator_emp.branch or '').strip().lower() == branch.strip().lower():
                 visible.append(ann)
 
-        serializer = CounselorAnnouncementSerializer(visible, many=True)
+        serializer = AnnouncementSerializer(visible, many=True)
         return Response({'results': serializer.data, 'count': len(visible)})
 
     except Exception as e:

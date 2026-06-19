@@ -1325,7 +1325,7 @@ export function CounselorPendingRequests() {
 
       {/* Reassign Modal */}
       {reassignModal && (
-        <ReassignModal
+        <ReassignModalV2
           request={reassignModal}
           counselors={counselors}
           onClose={() => setReassignModal(null)}
@@ -1338,16 +1338,57 @@ export function CounselorPendingRequests() {
 
 // ── REASSIGN MODAL ─────────────────────────────────────────────────────────
 function ReassignModal({ request, counselors, onClose, onSaved }) {
+  const [selectedCounselor, setSelectedCounselor] = useState(String(request.counselor_id || ''))
+  const [staff, setStaff] = useState([])
+  const [batches, setBatches] = useState([])
   const [newTrainer, setNewTrainer] = useState('')
+  const [selectedBatch, setSelectedBatch] = useState('')
+  const [batchMode, setBatchMode] = useState('existing')
   const [notes, setNotes] = useState('')
   const [saving, setSaving] = useState(false)
+  const selectedCounselorObj = counselors.find(c => String(c.id) === String(selectedCounselor))
+
+  useEffect(() => {
+    setNewTrainer('')
+    setSelectedBatch('')
+    setBatches([])
+    if (!selectedCounselorObj?.branch) {
+      setStaff([])
+      return
+    }
+    api.get(`/trainers/?branch=${encodeURIComponent(selectedCounselorObj.branch)}`)
+      .then(r => setStaff(r.data.results || r.data || []))
+      .catch(() => {
+        setStaff([])
+        toast.error('Failed to load staff for selected branch')
+      })
+  }, [selectedCounselorObj?.branch])
+
+  useEffect(() => {
+    setSelectedBatch('')
+    if (!newTrainer) {
+      setBatches([])
+      return
+    }
+    api.get(`/trainer-batches/${newTrainer}/`)
+      .then(r => setBatches(r.data.results || r.data || []))
+      .catch(() => {
+        setBatches([])
+        toast.error('Failed to load staff batches')
+      })
+  }, [newTrainer])
 
   const save = async () => {
-    if (!newTrainer) return toast.error('Select a counselor')
+    if (!selectedCounselor) return toast.error('Select a counselor')
+    if (!newTrainer) return toast.error('Select a staff member')
+    if (batchMode === 'existing' && !selectedBatch) return toast.error('Select a batch')
     setSaving(true)
     try {
       const r = await api.post(`/counselor/requests/${request.id}/reassign/`, {
+        target_counselor_id: selectedCounselor,
         new_trainer_id: newTrainer,
+        batch_mode: batchMode === 'new' ? 'new' : 'existing',
+        batch_id: batchMode === 'existing' ? selectedBatch : undefined,
         notes,
       })
       toast.success(r.data.message || 'Student reassigned successfully!')
@@ -1404,6 +1445,158 @@ function ReassignModal({ request, counselors, onClose, onSaved }) {
 // ══════════════════════════════════════════════════════════════════════════════
 // APPROVED REQUESTS - Fixed with better error handling
 // ══════════════════════════════════════════════════════════════════════════════
+function ReassignModalV2({ request, counselors, onClose, onSaved }) {
+  const [selectedCounselor, setSelectedCounselor] = useState(String(request.counselor_id || ''))
+  const [staff, setStaff] = useState([])
+  const [batches, setBatches] = useState([])
+  const [selectedStaff, setSelectedStaff] = useState('')
+  const [selectedBatch, setSelectedBatch] = useState('')
+  const [batchMode, setBatchMode] = useState('existing')
+  const [notes, setNotes] = useState('')
+  const [saving, setSaving] = useState(false)
+  const selectedCounselorObj = counselors.find(c => String(c.id) === String(selectedCounselor))
+
+  useEffect(() => {
+    setSelectedStaff('')
+    setSelectedBatch('')
+    setBatches([])
+    if (!selectedCounselorObj?.branch) {
+      setStaff([])
+      return
+    }
+    api.get(`/trainers/?branch=${encodeURIComponent(selectedCounselorObj.branch)}`)
+      .then(r => setStaff(r.data.results || r.data || []))
+      .catch(() => {
+        setStaff([])
+        toast.error('Failed to load staff for selected branch')
+      })
+  }, [selectedCounselorObj?.branch])
+
+  useEffect(() => {
+    setSelectedBatch('')
+    if (!selectedStaff) {
+      setBatches([])
+      return
+    }
+    api.get(`/trainer-batches/${selectedStaff}/`)
+      .then(r => setBatches(r.data.results || r.data || []))
+      .catch(() => {
+        setBatches([])
+        toast.error('Failed to load staff batches')
+      })
+  }, [selectedStaff])
+
+  const save = async () => {
+    if (!selectedCounselor) return toast.error('Select a counselor')
+    if (!selectedStaff) return toast.error('Select a staff member')
+    if (batchMode === 'existing' && !selectedBatch) return toast.error('Select a batch')
+    setSaving(true)
+    try {
+      const r = await api.post(`/counselor/requests/${request.id}/reassign/`, {
+        target_counselor_id: selectedCounselor,
+        new_trainer_id: selectedStaff,
+        batch_mode: batchMode === 'new' ? 'new' : 'existing',
+        batch_id: batchMode === 'existing' ? selectedBatch : undefined,
+        notes,
+      })
+      toast.success(r.data.message || 'Student reassigned successfully!')
+      onSaved()
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Reassignment failed')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Modal open onClose={onClose} title="Reassign Student" size="md">
+      <div className="counselor-alert-info" style={{ marginBottom: 20 }}>
+        <i className="fas fa-info-circle" style={{ marginRight: 8 }} />
+        Reassigning <strong>{request.student_name}</strong>. Choose a counselor branch, then select staff and batch for the student's next sessions.
+      </div>
+
+      <div className="counselor-fg">
+        <label className="counselor-label">Select Counselor <span className="counselor-req">*</span></label>
+        <select className="counselor-select" value={selectedCounselor} onChange={e => setSelectedCounselor(e.target.value)}>
+          <option value="">Choose counselor...</option>
+          {counselors.filter(c => c.designation?.toLowerCase() === 'counselor').map(c => (
+            <option key={c.id} value={c.id}>{c.first_name} {c.last_name || ''} - {c.branch}</option>
+          ))}
+        </select>
+      </div>
+
+      <div className="counselor-fg">
+        <label className="counselor-label">Select Staff <span className="counselor-req">*</span></label>
+        <select className="counselor-select" value={selectedStaff} onChange={e => setSelectedStaff(e.target.value)} disabled={!selectedCounselor}>
+          <option value="">Choose staff...</option>
+          {staff.map(s => (
+            <option key={s.id} value={s.id}>{s.first_name} {s.last_name || ''} - {s.designation} - {s.branch}</option>
+          ))}
+        </select>
+        {selectedCounselor && staff.length === 0 && (
+          <small className="counselor-hint">No staff found in this counselor branch.</small>
+        )}
+      </div>
+
+      <div className="counselor-fg">
+        <label className="counselor-label">Batch Option <span className="counselor-req">*</span></label>
+        <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, fontWeight: 700, color: T.navy }}>
+            <input type="radio" checked={batchMode === 'new'} onChange={() => setBatchMode('new')} />
+            Create New Batch
+          </label>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, fontWeight: 700, color: T.navy }}>
+            <input type="radio" checked={batchMode === 'existing'} onChange={() => setBatchMode('existing')} />
+            Add Existing Batch
+          </label>
+        </div>
+        <small className="counselor-hint">Create New Batch creates a same-course batch for the selected staff. Add Existing Batch moves the student into one of that staff's current batches.</small>
+      </div>
+
+      {batchMode === 'existing' && (
+        <div className="counselor-fg">
+          <label className="counselor-label">Select Batch <span className="counselor-req">*</span></label>
+          <select className="counselor-select" value={selectedBatch} onChange={e => setSelectedBatch(e.target.value)} disabled={!selectedStaff}>
+            <option value="">Choose batch...</option>
+            {batches.map(b => (
+              <option key={b.id} value={b.id}>{b.batch_number} - {b.course_name_display || request.course_name} - {b.batch_timing}</option>
+            ))}
+          </select>
+          {selectedStaff && batches.length === 0 && (
+            <small className="counselor-hint">No batches found for this staff. Use Create New Batch.</small>
+          )}
+        </div>
+      )}
+
+      {batchMode === 'new' && selectedCounselorObj && selectedStaff && (
+        <div className="counselor-alert-info" style={{ marginBottom: 16 }}>
+          <i className="fas fa-layer-group" style={{ marginRight: 8 }} />
+          A new {request.course_name} batch will be created for the selected staff with the current batch timing ({request.batch_timing || 'same timing'}).
+        </div>
+      )}
+
+      <div className="counselor-fg">
+        <label className="counselor-label">Counselor Notes (optional)</label>
+        <textarea
+          className="counselor-input"
+          rows={3}
+          value={notes}
+          onChange={e => setNotes(e.target.value)}
+          placeholder="Add notes for the reassignment..."
+        />
+      </div>
+
+      <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end', marginTop: 8 }}>
+        <button className="counselor-btn counselor-btn-ghost" onClick={onClose} disabled={saving}>Cancel</button>
+        <button className="counselor-btn counselor-btn-primary" onClick={save} disabled={saving || !selectedCounselor || !selectedStaff || (batchMode === 'existing' && !selectedBatch)}>
+          <i className={`fas ${saving ? 'fa-spinner fa-spin' : 'fa-exchange-alt'}`} />
+          {saving ? 'Reassigning...' : 'Confirm Reassign'}
+        </button>
+      </div>
+    </Modal>
+  )
+}
+
 export function CounselorApprovedRequests() {
   const [requests, setRequests] = useState([])
   const [loading, setLoading] = useState(true)
@@ -3413,4 +3606,3 @@ export function CounselorAnnouncements() {
     </div>
   )
 }
-

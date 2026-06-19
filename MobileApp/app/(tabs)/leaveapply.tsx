@@ -1,11 +1,9 @@
 import { Ionicons } from "@expo/vector-icons";
-import * as DocumentPicker from "expo-document-picker";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
 import {
   Alert,
-  Image,
   SafeAreaView,
   ScrollView,
   StyleSheet,
@@ -17,12 +15,6 @@ import {
 import DateTimePickerModal from "react-native-modal-datetime-picker";
 import DropDownPicker from "react-native-dropdown-picker";
 import api from "@/services/api";
-
-type UploadedFile = {
-  name: string;
-  uri: string;
-  mimeType?: string;
-};
 
 export default function LeaveApplyScreen() {
   const router = useRouter();
@@ -47,8 +39,6 @@ export default function LeaveApplyScreen() {
   const [endDate, setEndDate] = useState<Date | null>(null);
 
   const [reason, setReason] = useState("");
-  const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
-  const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [loadingProfile, setLoadingProfile] = useState(true);
   const [submitting, setSubmitting] = useState(false);
 
@@ -115,44 +105,16 @@ export default function LeaveApplyScreen() {
     return date.toISOString().split("T")[0];
   };
 
-  const handleFileUpload = async () => {
-    const result = await DocumentPicker.getDocumentAsync({
-      type: ["image/*", "application/pdf"],
-      multiple: true,
-    });
-
-    if (!result.canceled && result.assets) {
-      const files = result.assets.map((f) => ({
-        name: f.name,
-        uri: f.uri,
-        mimeType: f.mimeType,
-      }));
-      setUploadedFiles((prev) => [...prev, ...files].slice(0, 5));
-    }
-  };
-
-  const removeFile = (index: number) => {
-    setUploadedFiles((prev) => prev.filter((_, i) => i !== index));
-  };
-
-  const openFile = (file: UploadedFile) => {
-    if (file.mimeType?.startsWith("image")) {
-      setPreviewImage(file.uri);
-    } else {
-      Alert.alert(
-        "PDF Selected",
-        "PDF preview is not available here. The file is selected successfully."
-      );
-    }
-  };
+  const leaveDays =
+    startDate && endDate && endDate >= startDate
+      ? Math.floor((endDate.getTime() - startDate.getTime()) / 86400000) + 1
+      : 0;
 
   const resetForm = () => {
     setLeaveType(null);
     setStartDate(null);
     setEndDate(null);
     setReason("");
-    setUploadedFiles([]);
-    setPreviewImage(null);
   };
 
   const handleSubmit = async () => {
@@ -178,14 +140,7 @@ export default function LeaveApplyScreen() {
 
       await api.post("student-leave/", payload);
 
-      if (uploadedFiles.length > 0) {
-        Alert.alert(
-          "Success",
-          "Leave applied successfully. Selected files are not uploaded yet because backend file upload is not enabled for this API."
-        );
-      } else {
-        Alert.alert("Success", "Leave applied successfully!");
-      }
+      Alert.alert("Success", "Leave applied successfully!");
 
       resetForm();
     } catch (error: any) {
@@ -239,21 +194,25 @@ export default function LeaveApplyScreen() {
           />
         </View>
 
-        <Text style={styles.label}>Leave Type</Text>
-        <DropDownPicker
-          open={open}
-          value={leaveType}
-          items={items}
-          setOpen={setOpen}
-          setValue={setLeaveType}
-          setItems={setItems}
-          listMode="MODAL"
-          style={styles.dropdown}
-          dropDownContainerStyle={styles.dropdownContainer}
-          textStyle={styles.dropdownText}
-          placeholderStyle={styles.dropdownPlaceholder}
-          placeholder="Select leave type"
-        />
+        <View style={styles.dropdownWrap}>
+          <Text style={styles.label}>Leave Type</Text>
+          <DropDownPicker
+            open={open}
+            value={leaveType}
+            items={items}
+            setOpen={setOpen}
+            setValue={setLeaveType}
+            setItems={setItems}
+            listMode="SCROLLVIEW"
+            maxHeight={220}
+            scrollViewProps={{ nestedScrollEnabled: true }}
+            style={styles.dropdown}
+            dropDownContainerStyle={styles.dropdownContainer}
+            textStyle={styles.dropdownText}
+            placeholderStyle={styles.dropdownPlaceholder}
+            placeholder="Select leave type"
+          />
+        </View>
 
         <Text style={styles.label}>Leave Dates</Text>
         <View style={styles.row}>
@@ -275,6 +234,13 @@ export default function LeaveApplyScreen() {
           onCancel={() => setDatePickerVisible(false)}
         />
 
+        <View style={styles.durationBox}>
+          <Ionicons name="time-outline" size={19} color="#5523D2" />
+          <Text style={styles.durationText}>
+            Duration: {leaveDays > 0 ? `${leaveDays} day${leaveDays > 1 ? "s" : ""}` : "Select dates"}
+          </Text>
+        </View>
+
         <Text style={styles.label}>Reason</Text>
         <TextInput
           style={styles.textArea}
@@ -284,34 +250,6 @@ export default function LeaveApplyScreen() {
           placeholder="Enter reason for leave"
           placeholderTextColor="#98A2B3"
         />
-
-        <Text style={styles.label}>Upload Proof (Optional)</Text>
-        <TouchableOpacity style={styles.uploadBtn} onPress={handleFileUpload}>
-          <Ionicons name="cloud-upload-outline" size={22} color="#5523D2" />
-          <Text style={styles.uploadText}>Upload Files</Text>
-        </TouchableOpacity>
-
-        {uploadedFiles.map((file, index) => (
-          <TouchableOpacity
-            key={`${file.uri}-${index}`}
-            style={styles.fileRow}
-            onPress={() => openFile(file)}
-          >
-            {file.mimeType?.startsWith("image") ? (
-              <Image source={{ uri: file.uri }} style={styles.previewImg} />
-            ) : (
-              <Ionicons name="document-text-outline" size={28} color="#5523D2" />
-            )}
-
-            <Text style={styles.fileName} numberOfLines={1}>
-              {file.name}
-            </Text>
-
-            <TouchableOpacity onPress={() => removeFile(index)}>
-              <Ionicons name="close-circle" size={22} color="red" />
-            </TouchableOpacity>
-          </TouchableOpacity>
-        ))}
 
         <TouchableOpacity
           onPress={handleSubmit}
@@ -329,17 +267,6 @@ export default function LeaveApplyScreen() {
         </TouchableOpacity>
       </ScrollView>
 
-      {previewImage && (
-        <View style={styles.previewOverlay}>
-          <TouchableOpacity
-            style={styles.closePreview}
-            onPress={() => setPreviewImage(null)}
-          >
-            <Ionicons name="close" size={30} color="#fff" />
-          </TouchableOpacity>
-          <Image source={{ uri: previewImage }} style={styles.fullPreview} />
-        </View>
-      )}
     </SafeAreaView>
   );
 }
@@ -404,16 +331,26 @@ const styles = StyleSheet.create({
   },
   input: { flex: 1, marginLeft: 10, color: "#111827", fontWeight: "600" },
 
+  dropdownWrap: {
+    zIndex: 3000,
+    elevation: 3000,
+  },
+
   dropdown: {
     marginTop: 6,
     borderRadius: 14,
     minHeight: 50,
     borderColor: "#E9D5FF",
     backgroundColor: "#FFFFFF",
+    zIndex: 3000,
   },
   dropdownContainer: {
     borderColor: "#E9D5FF",
     backgroundColor: "#FFFFFF",
+    borderRadius: 14,
+    marginTop: 6,
+    elevation: 8,
+    zIndex: 3000,
   },
   dropdownText: {
     color: "#111827",
@@ -436,6 +373,19 @@ const styles = StyleSheet.create({
   },
   dateText: { marginLeft: 8, color: "#111827", fontWeight: "600" },
 
+  durationBox: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginTop: 12,
+    padding: 12,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "#E9D5FF",
+    backgroundColor: "#FFFFFF",
+  },
+  durationText: { color: "#2E1065", fontWeight: "800" },
+
   textArea: {
     backgroundColor: "#fff",
     height: 100,
@@ -449,31 +399,6 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
 
-  uploadBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginTop: 8,
-    backgroundColor: "#FFFFFF",
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: "#E9D5FF",
-    padding: 13,
-  },
-  uploadText: { marginLeft: 8, color: "#5523D2", fontWeight: "600" },
-
-  fileRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#fff",
-    padding: 10,
-    borderRadius: 12,
-    marginTop: 8,
-    borderWidth: 1,
-    borderColor: "#E9D5FF",
-  },
-  previewImg: { width: 40, height: 40, borderRadius: 6, marginRight: 8 },
-  fileName: { flex: 1, color: "#5523D2", marginHorizontal: 6 },
-
   submitBtn: {
     padding: 16,
     borderRadius: 16,
@@ -481,16 +406,4 @@ const styles = StyleSheet.create({
   },
   submitText: { color: "#fff", fontSize: 18, fontWeight: "bold" },
 
-  previewOverlay: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: "rgba(0,0,0,0.9)",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  fullPreview: { width: "90%", height: "70%", resizeMode: "contain" },
-  closePreview: { position: "absolute", top: 40, right: 20 },
 });

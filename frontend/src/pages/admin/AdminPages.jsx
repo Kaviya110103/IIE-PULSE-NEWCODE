@@ -651,7 +651,7 @@ export function AdminDashboard() {
 
   const statCards = [
     { label: 'Active Students', value: stats?.student_count ?? 0, icon: 'fa-user-graduate', color: T.amber, bgColor: 'rgba(244,169,64,0.1)', to: '/admin/students' },
-    { label: 'Trainers', value: (stats?.mentor_count || 0) + (stats?.trainer_count || 0), icon: 'fa-chalkboard-teacher', color: T.teal, bgColor: 'rgba(46,196,182,0.1)', to: '/admin/employees' },
+    { label: 'Employees', value: stats?.employee_count ?? 0, icon: 'fa-users-gear', color: T.teal, bgColor: 'rgba(46,196,182,0.1)', to: '/admin/employees' },
     { label: 'Courses', value: stats?.course_count ?? 0, icon: 'fa-book-open', color: T.sage, bgColor: 'rgba(76,175,129,0.1)', to: '/admin/courses' },
     { label: 'Batches', value: stats?.batch_count ?? 0, icon: 'fa-layer-group', color: T.navy, bgColor: 'rgba(15,27,45,0.1)', to: '/admin/batches' },
     { label: 'Completed', value: stats?.completed_count ?? 0, icon: 'fa-graduation-cap', color: T.rose, bgColor: 'rgba(232,72,85,0.1)', to: '/admin/completed' },
@@ -4400,6 +4400,14 @@ const downloadBill = async (feeId, studentName = 'Student') => {
   )
 }
 
+function resolveAdminMediaUrl(url) {
+  if (!url) return ''
+  if (/^https?:\/\//i.test(url)) return url
+  const base = api.defaults.baseURL || '/api'
+  const origin = base.startsWith('http') ? base.replace(/\/api\/?$/, '') : window.location.origin
+  return `${origin}${url.startsWith('/') ? '' : '/'}${url}`
+}
+
 function AdminMediaManager({ type }) {
   const config = {
     gallery: { title: 'Gallery', endpoint: '/gallery/', fileKey: 'image', accept: 'image/*', icon: 'fa-images' },
@@ -4465,7 +4473,7 @@ function AdminMediaManager({ type }) {
         <form onSubmit={submit} style={{ padding: 22, display: 'grid', gap: 14 }}>
           <input className="admin-input" placeholder="Title" value={form.title} onChange={e => setForm(p => ({ ...p, title: e.target.value }))} />
           <input className="admin-input" type="file" accept={config.accept} onChange={e => setForm(p => ({ ...p, file: e.target.files?.[0] || null }))} />
-          <button className="admin-btn admin-btn-primary" disabled={saving}>
+          <button className="admin-btn admin-btn-primary" style={{ width: 'fit-content', minWidth: 112, justifySelf: 'start' }} disabled={saving}>
             <i className={`fas ${saving ? 'fa-spinner fa-spin' : config.icon}`} />
             {saving ? 'Uploading...' : 'Upload'}
           </button>
@@ -4478,10 +4486,25 @@ function AdminMediaManager({ type }) {
         ) : (
           <div style={{ overflowX: 'auto' }}>
             <table className="admin-table">
-              <thead><tr><th>Title</th><th>Uploaded By</th><th>Created</th><th>Actions</th></tr></thead>
+              <thead><tr><th>Preview</th><th>Title</th><th>Uploaded By</th><th>Created</th><th>Actions</th></tr></thead>
               <tbody>
                 {items.map(item => (
                   <tr key={item.id}>
+                    <td>
+                      {type === 'gallery' ? (
+                        <img
+                          src={resolveAdminMediaUrl(item.image)}
+                          alt={item.title}
+                          style={{ width: 86, height: 58, objectFit: 'cover', borderRadius: 8, border: '1px solid #e5e7eb' }}
+                        />
+                      ) : (
+                        <video
+                          src={resolveAdminMediaUrl(item.video)}
+                          style={{ width: 110, height: 62, objectFit: 'cover', borderRadius: 8, border: '1px solid #e5e7eb', background: '#111827' }}
+                          controls
+                        />
+                      )}
+                    </td>
                     <td style={{ fontWeight: 700 }}>{item.title}</td>
                     <td>{item.uploaded_by_name || '-'}</td>
                     <td>{item.created_at ? new Date(item.created_at).toLocaleString('en-IN') : '-'}</td>
@@ -4560,10 +4583,12 @@ export function AdminNews() {
       <div className="admin-card">
         <AdminSectionHeader title="Publish News" />
         <form onSubmit={publish} style={{ padding: 22, display: 'grid', gap: 14 }}>
+          <label style={{ fontWeight: 800, color: T.navy }}>Title</label>
           <input className="admin-input" placeholder="Title" value={form.title} onChange={e => setForm(p => ({ ...p, title: e.target.value }))} />
+          <label style={{ fontWeight: 800, color: T.navy }}>Description</label>
           <textarea className="admin-input" rows={4} placeholder="Message" value={form.message} onChange={e => setForm(p => ({ ...p, message: e.target.value }))} />
           <input className="admin-input" type="file" accept="image/*" onChange={e => setForm(p => ({ ...p, image: e.target.files?.[0] || null }))} />
-          <button className="admin-btn admin-btn-primary" disabled={saving}><i className={`fas ${saving ? 'fa-spinner fa-spin' : 'fa-newspaper'}`} /> {saving ? 'Publishing...' : 'Publish'}</button>
+          <button className="admin-btn admin-btn-primary" style={{ width: 'fit-content', minWidth: 112, justifySelf: 'start' }} disabled={saving}><i className={`fas ${saving ? 'fa-spinner fa-spin' : 'fa-newspaper'}`} /> {saving ? 'Publishing...' : 'Publish'}</button>
         </form>
       </div>
       <SimpleAdminTable title="News Items" items={items} loading={loading} emptyIcon="fa-newspaper" emptyMsg="No news yet" columns={['Title', 'Message', 'Created']} renderRow={(item) => (
@@ -4635,13 +4660,15 @@ export function AdminCalendar() {
       <div className="admin-card">
         <AdminSectionHeader title="Add Event" />
         <form onSubmit={submit} style={{ padding: 22, display: 'grid', gap: 14 }}>
+          <label style={{ fontWeight: 800, color: T.navy }}>Title</label>
           <input className="admin-input" placeholder="Event name" value={form.event_name} onChange={e => setForm(p => ({ ...p, event_name: e.target.value }))} />
           <div className="admin-row-grid-2">
             <input className="admin-input" type="date" value={form.event_date} onChange={e => setForm(p => ({ ...p, event_date: e.target.value }))} />
             <input className="admin-input" type="time" value={form.event_time} onChange={e => setForm(p => ({ ...p, event_time: e.target.value }))} />
           </div>
+          <label style={{ fontWeight: 800, color: T.navy }}>Description</label>
           <textarea className="admin-input" rows={3} placeholder="Message" value={form.message} onChange={e => setForm(p => ({ ...p, message: e.target.value }))} />
-          <button className="admin-btn admin-btn-primary" disabled={saving}><i className={`fas ${saving ? 'fa-spinner fa-spin' : 'fa-calendar-plus'}`} /> {saving ? 'Saving...' : 'Save Event'}</button>
+          <button className="admin-btn admin-btn-primary" style={{ width: 'fit-content', minWidth: 118, justifySelf: 'start' }} disabled={saving}><i className={`fas ${saving ? 'fa-spinner fa-spin' : 'fa-calendar-plus'}`} /> {saving ? 'Saving...' : 'Save Event'}</button>
         </form>
       </div>
       <SimpleAdminTable title="Events" items={items} loading={loading} emptyIcon="fa-calendar-alt" emptyMsg="No events yet" columns={['Event', 'Date', 'Time']} renderRow={(item) => (
