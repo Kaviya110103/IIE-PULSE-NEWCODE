@@ -259,6 +259,7 @@ export default function WelcomeScreen() {
 
       if (activeModule !== "home") {
         setActiveModule("home");
+        router.replace("/welcome" as any);
         return true;
       }
 
@@ -343,7 +344,7 @@ export default function WelcomeScreen() {
   const openNavItem = (item: (typeof sideNavItems)[number] | (typeof bottomNavItems)[number]) => {
     if (item.key === "overview") {
       setDrawerOpen(false);
-      router.push((isPrivateUser ? "/home" : "/public-overview") as any);
+      router.replace((isPrivateUser ? "/home" : "/public-overview") as any);
       return;
     }
 
@@ -354,7 +355,7 @@ export default function WelcomeScreen() {
 
     if (item.route) {
       setDrawerOpen(false);
-      router.push(item.route as any);
+      router.replace(item.route as any);
       return;
     }
 
@@ -464,9 +465,13 @@ export default function WelcomeScreen() {
           </Pressable>
 
           <View style={styles.brandRow}>
-            <View style={styles.logoMark}>
-              <Image source={appLogo} style={styles.logoImage} resizeMode="contain" />
-            </View>
+            {activeModule === "home" ? (
+              <View style={styles.logoMark}>
+                <Image source={appLogo} style={styles.logoImage} resizeMode="contain" />
+              </View>
+            ) : (
+              <ThemedText style={styles.headerTextLogo}>IIE Pulse</ThemedText>
+            )}
           </View>
 
           <Pressable
@@ -1755,6 +1760,11 @@ const styles = StyleSheet.create({
   logoImage: {
     width: "100%",
     height: 50,
+  },
+  headerTextLogo: {
+    color: "#1F1335",
+    fontSize: 18,
+    fontWeight: "800",
   },
   notificationButton: {
     width: 44,

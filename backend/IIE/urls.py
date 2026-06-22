@@ -130,6 +130,7 @@ urlpatterns = [
     # ── ADMIN OVERVIEW ────────────────────────────────────────────────────────
     path('api/admin/monitoring/employees/', v.admin_employee_monitoring),
     path('api/admin/monitoring/students/', v.admin_student_monitoring),
+    path('api/staff/monitoring/students/', v.mentor_student_monitoring),
     path('api/admin/branch-attendance/', v.admin_branch_attendance),
     path('api/admin/materials-overview/', v.admin_materials_overview),
     path('api/admin/support-overview/', v.admin_support_overview),

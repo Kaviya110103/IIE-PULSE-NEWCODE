@@ -222,6 +222,7 @@ function EmployeeNav() {
       <NavItem to="/employee/doubts" icon="fa-question-circle" label="Student Doubts" />
       <NavItem to="/employee/announcements" icon="fa-bullhorn" label="Admin Announcements" />
       <NavItem to="/employee/branch-announcements" icon="fa-map-marker-alt" label="Branch Announcements" />
+      <NavItem to="/employee/monitoring/students" icon="fa-user-clock" label="Student Login Records" />
 
       <NavGroup icon="fa-book" label="Materials">
         <SubLink to="/employee/materials/upload" label="Upload Materials" />

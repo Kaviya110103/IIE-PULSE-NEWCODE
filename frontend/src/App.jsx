@@ -28,7 +28,7 @@ import {
   StaffAnnouncements, BranchAnnouncements, StaffDoubts as EmployeeDoubts, ViewStudents,
   StaffStudentLeaveRequests, StaffOwnLeaveHistory,
   CreateTest, ViewTests, TestResults, AddQuestions,
-  UploadQuiz, ManageQuizzes, StaffQuizResults
+  UploadQuiz, ManageQuizzes, StaffQuizResults, MentorStudentMonitoring
 } from './pages/employee/EmployeePages'
 
 // ── Counselor ──────────────────────────────────────────────────────────────
@@ -131,6 +131,7 @@ function AppRoutes() {
         <Route path="doubts" element={<EmployeeDoubts />} />
         <Route path="announcements" element={<StaffAnnouncements />} />
         <Route path="branch-announcements" element={<BranchAnnouncements />} />
+        <Route path="monitoring/students" element={<MentorStudentMonitoring />} />
 
         {/* Leave Management Routes */}
         <Route path="student-leave/pending" element={<StaffStudentLeaveRequests />} />

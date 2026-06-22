@@ -167,7 +167,7 @@ export default function Home() {
           <RefreshControl
             refreshing={refreshing}
             onRefresh={handleRefresh}
-            tintColor="#A855F7"
+            tintColor="#5523D2"
           />
         }
       >
@@ -377,10 +377,10 @@ function formatSessionDate(date?: string | null) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#15111F",
+    backgroundColor: "#F6F3FF",
   },
   scrollContent: {
-    paddingTop: 46,
+    paddingTop: 18,
     paddingHorizontal: 16,
     paddingBottom: 112,
   },
@@ -388,15 +388,15 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#15111F",
+    backgroundColor: "#F6F3FF",
     padding: 24,
   },
   helperText: {
     marginTop: 12,
-    color: "#E9D5FF",
+    color: "#6D28D9",
   },
   errorText: {
-    color: "#FCA5A5",
+    color: "#DC2626",
     textAlign: "center",
   },
   retryButton: {
@@ -503,12 +503,12 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   progressPanel: {
-    backgroundColor: "#211A31",
+    backgroundColor: "#FFFFFF",
     borderRadius: 24,
     padding: 18,
     marginTop: 18,
     borderWidth: 1,
-    borderColor: "#33264A",
+    borderColor: "#EEE7FF",
   },
   progressHeader: {
     flexDirection: "row",
@@ -521,7 +521,7 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
   },
   progressTitle: {
-    color: "#FFFFFF",
+    color: "#2E1065",
     fontSize: 34,
     lineHeight: 42,
   },
@@ -541,7 +541,7 @@ const styles = StyleSheet.create({
   progressTrack: {
     height: 13,
     borderRadius: 999,
-    backgroundColor: "#3B3052",
+    backgroundColor: "#EDE9FE",
     overflow: "hidden",
     marginTop: 16,
   },
@@ -551,7 +551,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#A855F7",
   },
   progressHint: {
-    color: "#C4B5FD",
+    color: "#6B7280",
     fontSize: 12,
     lineHeight: 18,
     marginTop: 11,
@@ -563,28 +563,28 @@ const styles = StyleSheet.create({
   },
   sessionMiniCard: {
     flex: 1,
-    backgroundColor: "#1F1830",
+    backgroundColor: "#FBF9FF",
     borderRadius: 20,
     padding: 16,
     borderWidth: 1,
-    borderColor: "#33264A",
+    borderColor: "#EEE7FF",
   },
   sessionMiniNumber: {
-    color: "#FFFFFF",
+    color: "#2E1065",
     fontSize: 27,
     lineHeight: 34,
   },
   sessionMiniText: {
-    color: "#C4B5FD",
+    color: "#6B7280",
     fontSize: 12,
   },
   timelinePanel: {
-    backgroundColor: "#1B1528",
+    backgroundColor: "#FFFFFF",
     borderRadius: 26,
     padding: 16,
     marginTop: 18,
     borderWidth: 1,
-    borderColor: "#33264A",
+    borderColor: "#EEE7FF",
   },
   timelineHeader: {
     flexDirection: "row",
@@ -593,7 +593,7 @@ const styles = StyleSheet.create({
     marginBottom: 14,
   },
   sectionTitle: {
-    color: "#FFFFFF",
+    color: "#2E1065",
     fontSize: 22,
     lineHeight: 29,
   },
@@ -612,11 +612,11 @@ const styles = StyleSheet.create({
   },
   sessionCard: {
     flexDirection: "row",
-    backgroundColor: "#211A31",
+    backgroundColor: "#FBF9FF",
     borderRadius: 22,
     padding: 14,
     borderWidth: 1,
-    borderColor: "#352750",
+    borderColor: "#EEE7FF",
     marginTop: 11,
   },
   timelineDot: {
@@ -649,11 +649,11 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
   },
   sessionDate: {
-    color: "#DDD6FE",
+    color: "#7C3AED",
     fontSize: 11,
   },
   sessionTitle: {
-    color: "#FFFFFF",
+    color: "#1F1335",
     fontSize: 16,
     lineHeight: 22,
     marginTop: 5,
@@ -661,14 +661,14 @@ const styles = StyleSheet.create({
   topicBox: {
     flexDirection: "row",
     gap: 8,
-    backgroundColor: "#171222",
+    backgroundColor: "#F5F3FF",
     borderRadius: 15,
     padding: 11,
     marginTop: 10,
   },
   topicText: {
     flex: 1,
-    color: "#DDD6FE",
+    color: "#4B5563",
     fontSize: 12,
     lineHeight: 18,
   },

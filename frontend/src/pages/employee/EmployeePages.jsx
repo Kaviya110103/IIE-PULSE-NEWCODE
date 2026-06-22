@@ -399,6 +399,154 @@ function SH({ title, count, actions }) {
 // ══════════════════════════════════════════════════════════════════════════════
 // EMPLOYEE DASHBOARD
 // ══════════════════════════════════════════════════════════════════════════════
+function formatActivityTime(value) {
+  if (!value) return '-'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return '-'
+  return date.toLocaleString('en-IN', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
+export function MentorStudentMonitoring() {
+  const [records, setRecords] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [filters, setFilters] = useState({ date_from: '', date_to: '', search: '' })
+
+  const load = async (nextFilters = filters) => {
+    setLoading(true)
+    try {
+      const params = new URLSearchParams()
+      Object.entries(nextFilters).forEach(([key, value]) => {
+        if (value) params.append(key, value)
+      })
+      const query = params.toString()
+      const res = await api.get(`/staff/monitoring/students/${query ? `?${query}` : ''}`)
+      setRecords(res.data.results || [])
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Failed to load student login records')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => { load() }, [])
+
+  const applyPreset = (preset) => {
+    const now = new Date()
+    const toISO = (date) => date.toISOString().slice(0, 10)
+    let date_from = ''
+    let date_to = toISO(now)
+
+    if (preset === 'today') date_from = date_to
+    if (preset === 'yesterday') {
+      const yesterday = new Date(now)
+      yesterday.setDate(now.getDate() - 1)
+      date_from = toISO(yesterday)
+      date_to = date_from
+    }
+    if (preset === 'week') {
+      const weekStart = new Date(now)
+      weekStart.setDate(now.getDate() - 6)
+      date_from = toISO(weekStart)
+    }
+    if (preset === 'month') {
+      const monthStart = new Date(now.getFullYear(), now.getMonth(), 1)
+      date_from = toISO(monthStart)
+    }
+
+    const next = { ...filters, date_from, date_to }
+    setFilters(next)
+    load(next)
+  }
+
+  const clearFilters = () => {
+    const empty = { date_from: '', date_to: '', search: '' }
+    setFilters(empty)
+    load(empty)
+  }
+
+  return (
+    <div className="employee-root">
+      <Styles />
+      <PH title="Student Login Records" sub="Login, logout, and last-seen activity for your assigned students only" />
+
+      <div className="employee-card" style={{ padding: 18, marginBottom: 18 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
+          <div>
+            <label className="employee-label">From</label>
+            <input className="employee-input" type="date" value={filters.date_from} onChange={e => setFilters(p => ({ ...p, date_from: e.target.value }))} />
+          </div>
+          <div>
+            <label className="employee-label">To</label>
+            <input className="employee-input" type="date" value={filters.date_to} onChange={e => setFilters(p => ({ ...p, date_to: e.target.value }))} />
+          </div>
+          <div>
+            <label className="employee-label">Search</label>
+            <input className="employee-input" value={filters.search} onChange={e => setFilters(p => ({ ...p, search: e.target.value }))} placeholder="Name, email, student ID" />
+          </div>
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap', marginTop: 14 }}>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <button className="employee-btn employee-btn-ghost employee-btn-sm" type="button" onClick={() => applyPreset('today')}>Today</button>
+            <button className="employee-btn employee-btn-ghost employee-btn-sm" type="button" onClick={() => applyPreset('yesterday')}>Yesterday</button>
+            <button className="employee-btn employee-btn-ghost employee-btn-sm" type="button" onClick={() => applyPreset('week')}>This Week</button>
+            <button className="employee-btn employee-btn-ghost employee-btn-sm" type="button" onClick={() => applyPreset('month')}>This Month</button>
+          </div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <button className="employee-btn employee-btn-ghost" type="button" onClick={clearFilters}><i className="fas fa-times" /> Clear</button>
+            <button className="employee-btn employee-btn-primary" type="button" onClick={() => load(filters)}><i className="fas fa-filter" /> Apply</button>
+          </div>
+        </div>
+      </div>
+
+      <div className="employee-card">
+        <SH title="Student Login Records" count={records.length} />
+        {loading ? <Spin /> : records.length === 0 ? (
+          <Empty msg="No login records found for your students" icon="fa-user-clock" />
+        ) : (
+          <div style={{ overflowX: 'auto' }}>
+            <table className="employee-table">
+              <thead>
+                <tr>
+                  <th>Student</th>
+                  <th>Branch</th>
+                  <th>Login Time</th>
+                  <th>Logout Time</th>
+                  <th>Last Seen</th>
+                </tr>
+              </thead>
+              <tbody>
+                {records.map(record => (
+                  <tr key={record.id}>
+                    <td>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                        <Avatar name={record.name} size={34} />
+                        <div>
+                          <div style={{ fontWeight: 700 }}>{record.name || '-'}</div>
+                          <div style={{ color: T.slate, fontSize: 12 }}>{record.email || record.student_id || ''}</div>
+                        </div>
+                      </div>
+                    </td>
+                    <td>{record.branch || '-'}</td>
+                    <td>{formatActivityTime(record.login_time)}</td>
+                    <td>{record.logout_time ? formatActivityTime(record.logout_time) : <Badge text="Still active" variant="success" />}</td>
+                    <td>{formatActivityTime(record.last_seen)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 export function EmployeeDashboard() {
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)

@@ -3515,6 +3515,43 @@ def admin_student_monitoring(request):
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
+def mentor_student_monitoring(request):
+    try:
+        mentor = Employee.objects.get(user=request.user)
+    except Employee.DoesNotExist:
+        return Response({'error': 'Mentor access required.'}, status=status.HTTP_403_FORBIDDEN)
+
+    if mentor.designation.lower() == 'counselor':
+        return Response({'error': 'Mentor access required.'}, status=status.HTTP_403_FORBIDDEN)
+
+    params = request.query_params
+    qs = UserActivity.objects.filter(
+        user_type='student',
+        student__assigned_staff=mentor,
+    ).select_related('user', 'student', 'student__assigned_staff')
+    qs = apply_activity_date_filters(qs, params)
+
+    search = params.get('search')
+    if search:
+        qs = qs.filter(
+            Q(student__first_name__icontains=search) |
+            Q(student__last_name__icontains=search) |
+            Q(student__email__icontains=search) |
+            Q(student__student_id__icontains=search) |
+            Q(user__username__icontains=search)
+        )
+
+    records = [format_student_activity(activity) for activity in qs.order_by('-login_time')]
+    return Response({
+        'results': records,
+        'filters': {
+            'branches': [mentor.branch] if mentor.branch else [],
+        },
+    })
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
 def admin_branch_attendance(request):
     if not is_admin_user(request.user):
         return Response({'error': 'Admin access required.'}, status=403)

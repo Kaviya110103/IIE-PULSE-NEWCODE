@@ -1,18 +1,53 @@
 import { Tabs, useGlobalSearchParams, usePathname, useRouter } from "expo-router";
-import { useEffect, useMemo } from "react";
-import { ActivityIndicator, BackHandler, PanResponder, StyleSheet, View } from "react-native";
+import { useEffect, useMemo, useState } from "react";
+import { ActivityIndicator, BackHandler, PanResponder, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 import { useStudentAuthGuard } from "@/hooks/use-student-auth-guard";
 
 const HOME_PATH = "/welcome";
 const NO_SWIPE_PATHS = new Set(["/", HOME_PATH, "/loginform", "/register", "/public-overview"]);
 
+const drawerItems: Array<{
+  key: string;
+  label: string;
+  icon: keyof typeof Ionicons.glyphMap;
+  route?: string;
+  module?: string;
+}> = [
+  { key: "overview", label: "Overview", icon: "grid-outline", route: "/home" },
+  { key: "attendance", label: "Attendance", icon: "time-outline", route: "/attendance" },
+  { key: "logsheet", label: "Logsheet", icon: "document-text-outline", route: "/logsheet" },
+  { key: "quizzes", label: "Quizzes", icon: "school-outline", route: "/quizzes" },
+  { key: "practice", label: "Practice Test", icon: "clipboard-outline", module: "practice" },
+  { key: "calendar", label: "Calendar", icon: "calendar-outline", module: "calendar" },
+  { key: "materials", label: "Materials", icon: "book-outline", route: "/materials" },
+  { key: "leave", label: "Leave", icon: "calendar-outline", route: "/leaveapply" },
+  { key: "support", label: "Support", icon: "help-buoy-outline", route: "/support" },
+  { key: "gallery", label: "Gallery", icon: "image-outline", module: "gallery" },
+  { key: "vlogs", label: "Vlogs", icon: "videocam-outline", module: "vlogs" },
+  { key: "news", label: "News", icon: "newspaper-outline", module: "news" },
+];
+
 export default function TabsLayout() {
   const router = useRouter();
   const pathname = usePathname();
   const authReady = useStudentAuthGuard();
+  const [drawerOpen, setDrawerOpen] = useState(false);
   const { mode } = useGlobalSearchParams<{ mode?: string }>();
   const routeMode = Array.isArray(mode) ? mode[0] : mode;
   const canGoHome = !NO_SWIPE_PATHS.has(pathname);
+  const showAppHeader = canGoHome && authReady;
+
+  const openDrawerItem = (item: (typeof drawerItems)[number]) => {
+    setDrawerOpen(false);
+    if (item.route) {
+      router.replace(item.route as any);
+      return;
+    }
+    if (item.module) {
+      router.replace({ pathname: "/welcome", params: { module: item.module } } as any);
+    }
+  };
 
   const goBackTarget = () => {
     if (pathname === "/app") {
@@ -70,30 +105,77 @@ export default function TabsLayout() {
           <ActivityIndicator size="large" color="#5523D2" />
         </View>
       ) : (
-      <Tabs
-        screenOptions={{
-          headerShown: false,
-          tabBarStyle: { display: "none" },
-        }}
-      >
-        <Tabs.Screen name="index" />
-        <Tabs.Screen name="loginform" />
-        <Tabs.Screen name="register" />
-        <Tabs.Screen name="welcome" />
-        <Tabs.Screen name="public-overview" />
-        <Tabs.Screen name="home" />
-        <Tabs.Screen name="attendance/index" />
-        <Tabs.Screen name="announcement" />
-        <Tabs.Screen name="leaveapply" />
-        <Tabs.Screen name="leavehistory" />
-        <Tabs.Screen name="logsheet" />
-        <Tabs.Screen name="materials" />
-        <Tabs.Screen name="profile" />
-        <Tabs.Screen name="quizzes" />
-        <Tabs.Screen name="app" />
-        <Tabs.Screen name="support" />
-      </Tabs>
+        <>
+          {showAppHeader ? (
+            <View style={styles.appHeader}>
+              <Pressable style={styles.headerIconButton} onPress={() => setDrawerOpen(true)}>
+                <Ionicons name="menu-outline" size={25} color="#5523D2" />
+              </Pressable>
+              <View style={styles.headerBrand}>
+                <Text style={styles.headerTitle}>IIE Pulse</Text>
+              </View>
+              <Pressable style={styles.headerIconButton} onPress={() => router.push("/announcement" as any)}>
+                <Ionicons name="notifications-outline" size={23} color="#5523D2" />
+              </Pressable>
+            </View>
+          ) : null}
+          <Tabs
+            screenOptions={{
+              headerShown: false,
+              tabBarStyle: { display: "none" },
+            }}
+          >
+            <Tabs.Screen name="index" />
+            <Tabs.Screen name="loginform" />
+            <Tabs.Screen name="register" />
+            <Tabs.Screen name="welcome" />
+            <Tabs.Screen name="public-overview" />
+            <Tabs.Screen name="home" />
+            <Tabs.Screen name="attendance/index" />
+            <Tabs.Screen name="announcement" />
+            <Tabs.Screen name="leaveapply" />
+            <Tabs.Screen name="leavehistory" />
+            <Tabs.Screen name="logsheet" />
+            <Tabs.Screen name="materials" />
+            <Tabs.Screen name="profile" />
+            <Tabs.Screen name="quizzes" />
+            <Tabs.Screen name="app" />
+            <Tabs.Screen name="support" />
+          </Tabs>
+        </>
       )}
+
+      {drawerOpen && showAppHeader ? (
+        <View style={styles.drawerLayer}>
+          <Pressable style={styles.drawerOverlay} onPress={() => setDrawerOpen(false)} />
+          <View style={styles.drawer}>
+            <View style={styles.drawerHeader}>
+              <View>
+                <Text style={styles.drawerTitle}>IIE Pulse</Text>
+                <Text style={styles.drawerSubtitle}>Student Portal</Text>
+              </View>
+              <Pressable style={styles.drawerClose} onPress={() => setDrawerOpen(false)}>
+                <Ionicons name="close" size={22} color="#FFFFFF" />
+              </Pressable>
+            </View>
+            <ScrollView contentContainerStyle={styles.drawerList} showsVerticalScrollIndicator={false}>
+              {drawerItems.map((item) => {
+                const active = item.route ? pathname === item.route : false;
+                return (
+                  <Pressable
+                    key={item.key}
+                    style={[styles.drawerItem, active && styles.drawerItemActive]}
+                    onPress={() => openDrawerItem(item)}
+                  >
+                    <Ionicons name={item.icon} size={21} color={active ? "#5523D2" : "#FFFFFF"} />
+                    <Text style={[styles.drawerItemText, active && styles.drawerItemTextActive]}>{item.label}</Text>
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+          </View>
+        </View>
+      ) : null}
 
       {canGoHome && authReady ? (
         <View
@@ -116,10 +198,104 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     backgroundColor: "#F8F7FF",
   },
+  appHeader: {
+    height: 64,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 16,
+    backgroundColor: "#FFFFFF",
+    borderBottomWidth: 1,
+    borderBottomColor: "#EEE7FF",
+  },
+  headerIconButton: {
+    width: 42,
+    height: 42,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#F5F3FF",
+  },
+  headerBrand: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  headerTitle: {
+    color: "#1F1335",
+    fontSize: 18,
+    fontWeight: "800",
+  },
+  drawerLayer: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 1200,
+    elevation: 1200,
+  },
+  drawerOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(15, 23, 42, 0.36)",
+  },
+  drawer: {
+    width: 286,
+    height: "100%",
+    backgroundColor: "#5523D2",
+    paddingTop: 22,
+    paddingHorizontal: 16,
+  },
+  drawerHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingBottom: 18,
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(255,255,255,0.16)",
+  },
+  drawerTitle: {
+    color: "#FFFFFF",
+    fontSize: 22,
+    fontWeight: "800",
+  },
+  drawerSubtitle: {
+    color: "#DDD6FE",
+    fontSize: 12,
+    marginTop: 2,
+  },
+  drawerClose: {
+    width: 38,
+    height: 38,
+    borderRadius: 13,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(255,255,255,0.12)",
+  },
+  drawerList: {
+    paddingVertical: 16,
+    gap: 8,
+  },
+  drawerItem: {
+    minHeight: 48,
+    borderRadius: 15,
+    paddingHorizontal: 14,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    backgroundColor: "rgba(255,255,255,0.10)",
+  },
+  drawerItemActive: {
+    backgroundColor: "#FFFFFF",
+  },
+  drawerItemText: {
+    color: "#FFFFFF",
+    fontSize: 15,
+    fontWeight: "700",
+  },
+  drawerItemTextActive: {
+    color: "#5523D2",
+  },
   edgeSwipeZone: {
     position: "absolute",
     left: 0,
-    top: 0,
+    top: 64,
     bottom: 0,
     width: 56,
     zIndex: 999,
