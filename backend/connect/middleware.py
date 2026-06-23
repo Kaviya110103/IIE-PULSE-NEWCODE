@@ -1,7 +1,10 @@
 from django.utils import timezone
+from datetime import timedelta
 from rest_framework_simplejwt.authentication import JWTAuthentication
 
 from .models import UserActivity
+
+ACTIVITY_TIMEOUT = timedelta(minutes=5)
 
 
 class UserActivityLastSeenMiddleware:
@@ -29,7 +32,15 @@ class UserActivityLastSeenMiddleware:
             ).order_by('-login_time').first()
 
             if activity:
-                activity.last_seen = timezone.now()
+                now = timezone.now()
+                if activity.last_seen and activity.last_seen < now - ACTIVITY_TIMEOUT:
+                    logout_at = activity.last_seen + ACTIVITY_TIMEOUT
+                    activity.logout_time = logout_at
+                    activity.last_seen = logout_at
+                    activity.save(update_fields=['logout_time', 'last_seen'])
+                    return
+
+                activity.last_seen = now
                 activity.save(update_fields=['last_seen'])
         except Exception:
             return

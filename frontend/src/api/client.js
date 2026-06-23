@@ -6,13 +6,49 @@ const api = axios.create({ baseURL })
 // Logout after 5 minutes of no activity
 const INACTIVITY_LIMIT = 5 * 60 * 1000
 let inactivityTimer = null
+let logoutInProgress = false
+
+const resolveApiUrl = (path) => {
+  const root = String(baseURL || '').replace(/\/$/, '')
+  const suffix = path.startsWith('/') ? path : `/${path}`
+  return `${root}${suffix}`
+}
+
+export const logoutSession = async ({ redirect = true, keepalive = false } = {}) => {
+  if (logoutInProgress) return
+  const access = localStorage.getItem('access')
+  const refresh = localStorage.getItem('refresh')
+
+  logoutInProgress = true
+
+  try {
+    if (access) {
+      await fetch(resolveApiUrl('/auth/logout/'), {
+        method: 'POST',
+        keepalive,
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${access}`,
+        },
+        body: JSON.stringify({ refresh }),
+      })
+    }
+  } catch {
+    // Closing tabs may cancel requests; the backend also expires stale sessions.
+  } finally {
+    localStorage.clear()
+    if (inactivityTimer) clearTimeout(inactivityTimer)
+    if (redirect) window.location.href = '/'
+    logoutInProgress = false
+  }
+}
 
 export const resetInactivityTimer = () => {
   if (inactivityTimer) clearTimeout(inactivityTimer)
+  if (!localStorage.getItem('access')) return
 
   inactivityTimer = setTimeout(() => {
-    localStorage.clear()
-    window.location.href = '/'
+    logoutSession({ redirect: true })
   }, INACTIVITY_LIMIT)
 }
 
@@ -22,9 +58,8 @@ resetInactivityTimer()
   window.addEventListener(event, resetInactivityTimer, true)
 })
 
-api.interceptors.request.use(cfg => {
-  resetInactivityTimer()
 
+api.interceptors.request.use(cfg => {
   const token = localStorage.getItem('access')
   if (token) cfg.headers.Authorization = `Bearer ${token}`
 

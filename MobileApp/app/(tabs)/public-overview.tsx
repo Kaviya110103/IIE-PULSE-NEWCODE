@@ -6,6 +6,7 @@ import {
   ActivityIndicator,
   Alert,
   Linking,
+  Pressable,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -55,6 +56,7 @@ const bottomNavItems: PublicBottomNavItem[] = [
   { key: "home", label: "Home", icon: "home", route: "/welcome" },
   { key: "gallery", label: "Gallery", icon: "image-outline", route: { pathname: "/welcome", params: { module: "gallery" } } as Href },
   { key: "vlogs", label: "Vlogs", icon: "videocam-outline", route: { pathname: "/welcome", params: { module: "vlogs" } } as Href },
+  { key: "contact", label: "Contact Us", icon: "business-outline", route: { pathname: "/welcome", params: { module: "contact" } } as Href },
 ];
 
 export default function PublicOverview() {
@@ -66,6 +68,7 @@ export default function PublicOverview() {
   const [quizzes, setQuizzes] = useState<PracticeQuiz[]>([]);
   const [results, setResults] = useState<PublicPracticeResult[]>([]);
   const [errorMsg, setErrorMsg] = useState("");
+  const [drawerOpen, setDrawerOpen] = useState(false);
 
   const loadOverview = async () => {
     try {
@@ -148,6 +151,7 @@ export default function PublicOverview() {
     }
 
     if (item.route) {
+      setDrawerOpen(false);
       router.push(item.route as Href);
       return;
     }
@@ -164,6 +168,47 @@ export default function PublicOverview() {
 
   return (
     <View style={styles.screen}>
+      {drawerOpen ? (
+        <View style={styles.drawerLayer}>
+          <Pressable style={styles.drawerOverlay} onPress={() => setDrawerOpen(false)} />
+          <View style={styles.drawer}>
+            <View style={styles.drawerHeader}>
+              <Text style={styles.drawerTitle}>IIE Pulse</Text>
+              <Text style={styles.drawerSubtitle}>Public Access</Text>
+            </View>
+            {bottomNavItems.map((item) => (
+              <Pressable
+                key={item.key}
+                style={[styles.drawerItem, item.key === "overview" && styles.drawerItemActive]}
+                onPress={() => handleBottomNav(item)}
+              >
+                <Ionicons
+                  name={item.icon as any}
+                  size={21}
+                  color={item.key === "overview" ? "#5523D2" : "#FFFFFF"}
+                />
+                <Text style={[styles.drawerItemText, item.key === "overview" && styles.drawerItemTextActive]}>
+                  {item.label}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+        </View>
+      ) : null}
+
+      <View style={styles.topHeader}>
+        <Pressable style={styles.headerIconButton} onPress={() => setDrawerOpen(true)}>
+          <Ionicons name="menu-outline" size={25} color="#5523D2" />
+        </Pressable>
+        <Text style={styles.headerTitle}>IIE Pulse</Text>
+        <Pressable
+          style={styles.headerIconButton}
+          onPress={() => router.push({ pathname: "/welcome", params: { module: "news" } } as any)}
+        >
+          <Ionicons name="notifications-outline" size={23} color="#5523D2" />
+        </Pressable>
+      </View>
+
       <ScrollView
         contentContainerStyle={styles.content}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
@@ -314,7 +359,85 @@ const styles = StyleSheet.create({
   },
   content: {
     padding: 18,
+    paddingTop: 14,
     paddingBottom: 112,
+  },
+  topHeader: {
+    height: 64,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 16,
+    backgroundColor: "#FFFFFF",
+    borderBottomWidth: 1,
+    borderBottomColor: "#EEE7FF",
+  },
+  headerIconButton: {
+    width: 42,
+    height: 42,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#F5F3FF",
+  },
+  headerTitle: {
+    color: "#1F1335",
+    fontSize: 18,
+    fontWeight: "900",
+  },
+  drawerLayer: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 30,
+    elevation: 30,
+  },
+  drawerOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(15, 23, 42, 0.36)",
+  },
+  drawer: {
+    width: 286,
+    height: "100%",
+    backgroundColor: "#5523D2",
+    paddingTop: 52,
+    paddingHorizontal: 18,
+  },
+  drawerHeader: {
+    paddingBottom: 20,
+    marginBottom: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(255,255,255,0.18)",
+  },
+  drawerTitle: {
+    color: "#FFFFFF",
+    fontSize: 22,
+    fontWeight: "900",
+  },
+  drawerSubtitle: {
+    color: "#DDD6FE",
+    fontSize: 12,
+    fontWeight: "700",
+    marginTop: 3,
+  },
+  drawerItem: {
+    minHeight: 48,
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    backgroundColor: "rgba(255,255,255,0.10)",
+    marginTop: 8,
+  },
+  drawerItemActive: {
+    backgroundColor: "#FFFFFF",
+  },
+  drawerItemText: {
+    color: "#FFFFFF",
+    fontSize: 15,
+    fontWeight: "800",
+  },
+  drawerItemTextActive: {
+    color: "#5523D2",
   },
   centerScreen: {
     flex: 1,

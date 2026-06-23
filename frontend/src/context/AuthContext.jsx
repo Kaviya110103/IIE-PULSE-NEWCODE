@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useEffect } from 'react'
-import api from '../api/client'
+import api, { logoutSession, resetInactivityTimer } from '../api/client'
 
 const AuthContext = createContext(null)
 
@@ -49,6 +49,7 @@ export function AuthProvider({ children }) {
 
         await api.get(verifyPath)
 
+        resetInactivityTimer()
         if (!cancelled) setUser(storedUser)
       } catch {
         localStorage.clear()
@@ -73,6 +74,7 @@ export function AuthProvider({ children }) {
       delete userData.refresh
       localStorage.setItem('user', JSON.stringify(userData))
       setUser(userData)
+      resetInactivityTimer()
       return { success: true, data: userData }
     } catch (err) {
       return { success: false, error: err.response?.data?.error || 'Login failed' }
@@ -82,8 +84,7 @@ export function AuthProvider({ children }) {
   }
 
   const logout = async () => {
-    try { await api.post('/auth/logout/', { refresh: localStorage.getItem('refresh') }) } catch {}
-    localStorage.clear()
+    await logoutSession({ redirect: false })
     setUser(null)
   }
 

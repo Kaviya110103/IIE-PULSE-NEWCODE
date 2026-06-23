@@ -1,11 +1,14 @@
 import { Tabs, useGlobalSearchParams, usePathname, useRouter } from "expo-router";
-import { useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, BackHandler, PanResponder, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ActivityIndicator, AppState, BackHandler, PanResponder, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useStudentAuthGuard } from "@/hooks/use-student-auth-guard";
+import api from "@/services/api";
 
 const HOME_PATH = "/welcome";
-const NO_SWIPE_PATHS = new Set(["/", HOME_PATH, "/loginform", "/register", "/public-overview"]);
+const NO_SWIPE_PATHS = new Set(["/", HOME_PATH, "/dashboard", "/loginform", "/register", "/public-overview"]);
+const INACTIVITY_LIMIT = 5 * 60 * 1000;
 
 const drawerItems: Array<{
   key: string;
@@ -26,6 +29,7 @@ const drawerItems: Array<{
   { key: "gallery", label: "Gallery", icon: "image-outline", module: "gallery" },
   { key: "vlogs", label: "Vlogs", icon: "videocam-outline", module: "vlogs" },
   { key: "news", label: "News", icon: "newspaper-outline", module: "news" },
+  { key: "contact", label: "Contact Us", icon: "business-outline", module: "contact" },
 ];
 
 export default function TabsLayout() {
@@ -33,10 +37,46 @@ export default function TabsLayout() {
   const pathname = usePathname();
   const authReady = useStudentAuthGuard();
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const inactivityTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const backgroundedAtRef = useRef<number | null>(null);
+  const loggingOutRef = useRef(false);
   const { mode } = useGlobalSearchParams<{ mode?: string }>();
   const routeMode = Array.isArray(mode) ? mode[0] : mode;
   const canGoHome = !NO_SWIPE_PATHS.has(pathname);
   const showAppHeader = canGoHome && authReady;
+
+  const logoutForInactivity = useCallback(async () => {
+    if (loggingOutRef.current) return;
+    const access = await AsyncStorage.getItem("access_token");
+    if (!access) return;
+
+    loggingOutRef.current = true;
+    if (inactivityTimerRef.current) {
+      clearTimeout(inactivityTimerRef.current);
+      inactivityTimerRef.current = null;
+    }
+
+    try {
+      const refresh = await AsyncStorage.getItem("refresh_token");
+      await api.post("auth/logout/", { refresh });
+    } catch {
+      // Backend stale-session cleanup still closes inactive monitoring records.
+    } finally {
+      await AsyncStorage.setItem("session_paused", "true");
+      loggingOutRef.current = false;
+      router.replace("/dashboard" as any);
+    }
+  }, [router]);
+
+  const resetInactivityTimer = useCallback(async () => {
+    const access = await AsyncStorage.getItem("access_token");
+    if (!access) return;
+
+    if (inactivityTimerRef.current) clearTimeout(inactivityTimerRef.current);
+    inactivityTimerRef.current = setTimeout(() => {
+      logoutForInactivity();
+    }, INACTIVITY_LIMIT);
+  }, [logoutForInactivity]);
 
   const openDrawerItem = (item: (typeof drawerItems)[number]) => {
     setDrawerOpen(false);
@@ -63,6 +103,10 @@ export default function TabsLayout() {
   };
 
   useEffect(() => {
+    setDrawerOpen(false);
+  }, [pathname]);
+
+  useEffect(() => {
     const subscription = BackHandler.addEventListener("hardwareBackPress", () => {
       if (!canGoHome) return false;
       goBackTarget();
@@ -71,6 +115,44 @@ export default function TabsLayout() {
 
     return () => subscription.remove();
   }, [canGoHome, pathname, routeMode]);
+
+  useEffect(() => {
+    if (!authReady) return;
+    resetInactivityTimer();
+
+    const subscription = AppState.addEventListener("change", (state) => {
+      if (state === "background" || state === "inactive") {
+        backgroundedAtRef.current = Date.now();
+        if (inactivityTimerRef.current) {
+          clearTimeout(inactivityTimerRef.current);
+        }
+        inactivityTimerRef.current = setTimeout(() => {
+          logoutForInactivity();
+        }, INACTIVITY_LIMIT);
+        return;
+      }
+
+      if (state === "active") {
+        const backgroundedAt = backgroundedAtRef.current;
+        backgroundedAtRef.current = null;
+
+        if (backgroundedAt && Date.now() - backgroundedAt >= INACTIVITY_LIMIT) {
+          logoutForInactivity();
+          return;
+        }
+
+        resetInactivityTimer();
+      }
+    });
+
+    return () => {
+      subscription.remove();
+      if (inactivityTimerRef.current) {
+        clearTimeout(inactivityTimerRef.current);
+        inactivityTimerRef.current = null;
+      }
+    };
+  }, [authReady, logoutForInactivity, resetInactivityTimer]);
 
   const edgeSwipeResponder = useMemo(
     () =>
@@ -99,7 +181,13 @@ export default function TabsLayout() {
   );
 
   return (
-    <View style={styles.shell}>
+    <View
+      style={styles.shell}
+      onStartShouldSetResponderCapture={() => {
+        resetInactivityTimer();
+        return false;
+      }}
+    >
       {!authReady ? (
         <View style={styles.loadingScreen}>
           <ActivityIndicator size="large" color="#5523D2" />
@@ -128,6 +216,7 @@ export default function TabsLayout() {
             <Tabs.Screen name="index" />
             <Tabs.Screen name="loginform" />
             <Tabs.Screen name="register" />
+            <Tabs.Screen name="dashboard" />
             <Tabs.Screen name="welcome" />
             <Tabs.Screen name="public-overview" />
             <Tabs.Screen name="home" />

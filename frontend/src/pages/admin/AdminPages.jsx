@@ -4728,6 +4728,145 @@ export function AdminReferrals() {
   )
 }
 
+const publicUserTabs = [
+  { key: 'users', label: 'New Users', icon: 'fa-user-plus' },
+  { key: 'results', label: 'Test Results', icon: 'fa-chart-line' },
+  { key: 'logins', label: 'Login Records', icon: 'fa-user-clock' },
+]
+
+export function AdminPublicUsers() {
+  const [activeTab, setActiveTab] = useState('users')
+  const [items, setItems] = useState([])
+  const [loading, setLoading] = useState(true)
+
+  const load = async (tab = activeTab) => {
+    setLoading(true)
+    try {
+      const res = await api.get(`/admin/public-users/?tab=${tab}`)
+      setItems(res.data.results || [])
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Failed to load public users')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => { load(activeTab) }, [activeTab])
+
+  const renderUsers = () => (
+    <PublicUsersTable
+      columns={['Name', 'Username', 'Contact', 'Qualification', 'Location', 'Registered']}
+      items={items}
+      emptyMsg="No public users registered yet"
+      emptyIcon="fa-user-plus"
+      renderRow={(item) => (
+        <>
+          <td style={{ fontWeight: 700 }}>{item.name || '-'}</td>
+          <td>{item.username || '-'}</td>
+          <td>
+            <div>{item.mobile || '-'}</div>
+            <div style={{ fontSize: 11, color: T.slate }}>{item.email || ''}</div>
+          </td>
+          <td>{item.qualification || '-'}</td>
+          <td>{[item.city, item.state].filter(Boolean).join(', ') || item.location || '-'}</td>
+          <td>{formatMonitoringTime(item.created_at)}</td>
+        </>
+      )}
+    />
+  )
+
+  const renderResults = () => (
+    <PublicUsersTable
+      columns={['User', 'Practice Test', 'Score', 'Result', 'Questions', 'Completed']}
+      items={items}
+      emptyMsg="No public practice test results yet"
+      emptyIcon="fa-chart-bar"
+      renderRow={(item) => (
+        <>
+          <td>
+            <div style={{ fontWeight: 700 }}>{item.name || item.username || '-'}</div>
+            <div style={{ fontSize: 11, color: T.slate }}>{item.username || ''}</div>
+          </td>
+          <td>{item.quiz_title || '-'}</td>
+          <td>{Number(item.score || 0)} / {Number(item.total_marks || 0)} ({Number(item.percentage || 0)}%)</td>
+          <td>
+            <span className={`status-pill ${item.is_passed ? 'approved' : 'rejected'}`}>
+              {item.is_passed ? 'Passed' : 'Failed'}
+            </span>
+          </td>
+          <td>{item.correct_count || 0} correct / {item.attempted_count || 0} attempted / {item.total_questions || 0} total</td>
+          <td>{formatMonitoringTime(item.completed_at)}</td>
+        </>
+      )}
+    />
+  )
+
+  const renderLogins = () => (
+    <PublicUsersTable
+      columns={['User', 'Email', 'Login Time', 'Logout Time', 'Last Seen']}
+      items={items}
+      emptyMsg="No public login records found"
+      emptyIcon="fa-user-clock"
+      renderRow={(item) => (
+        <>
+          <td>
+            <div style={{ fontWeight: 700 }}>{item.name || '-'}</div>
+            <div style={{ fontSize: 11, color: T.slate }}>{item.username || ''}</div>
+          </td>
+          <td>{item.email || '-'}</td>
+          <td>{formatMonitoringTime(item.login_time)}</td>
+          <td>{item.logout_time ? formatMonitoringTime(item.logout_time) : 'Still active'}</td>
+          <td>{formatMonitoringTime(item.last_seen)}</td>
+        </>
+      )}
+    />
+  )
+
+  return (
+    <div className="admin-root admin-fade">
+      <AdminStyles />
+      <AdminPageHeader
+        title="Public Users"
+        sub="View public registrations, practice test attempts, and login activity"
+      />
+      <div className="admin-card">
+        <div style={{ padding: 16, borderBottom: `1px solid ${T.border}`, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          {publicUserTabs.map(tab => (
+            <button
+              key={tab.key}
+              type="button"
+              className={`admin-btn ${activeTab === tab.key ? 'admin-btn-primary' : 'admin-btn-ghost'}`}
+              onClick={() => setActiveTab(tab.key)}
+            >
+              <i className={`fas ${tab.icon}`} /> {tab.label}
+            </button>
+          ))}
+        </div>
+        {loading ? <AdminSpin /> : activeTab === 'users' ? renderUsers() : activeTab === 'results' ? renderResults() : renderLogins()}
+      </div>
+    </div>
+  )
+}
+
+function PublicUsersTable({ columns, items, emptyMsg, emptyIcon, renderRow }) {
+  if (items.length === 0) {
+    return <AdminEmpty msg={emptyMsg} icon={emptyIcon} />
+  }
+
+  return (
+    <div style={{ overflowX: 'auto' }}>
+      <table className="admin-table">
+        <thead>
+          <tr>{columns.map(col => <th key={col}>{col}</th>)}</tr>
+        </thead>
+        <tbody>
+          {items.map(item => <tr key={item.id}>{renderRow(item)}</tr>)}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
 function SimpleAdminTable({ title, items, loading, emptyIcon, emptyMsg, columns, renderRow }) {
   return (
     <div className="admin-card">

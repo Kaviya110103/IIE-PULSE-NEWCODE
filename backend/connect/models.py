@@ -275,6 +275,66 @@ class UserActivity ( models.Model ) :
         return f"{self.user.username} - {self.user_type} - {self.login_time}"
 
 
+class PublicUser(models.Model):
+    name = models.CharField(max_length=120)
+    email = models.EmailField(blank=True, null=True)
+    mobile = models.CharField(max_length=20, blank=True, null=True)
+    qualification = models.CharField(max_length=120, blank=True, null=True)
+    location = models.CharField(max_length=160, blank=True, null=True)
+    city = models.CharField(max_length=100, blank=True, null=True)
+    state = models.CharField(max_length=100, blank=True, null=True)
+    username = models.CharField(max_length=120, unique=True)
+    password = models.CharField(max_length=255)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'public_users'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.name} ({self.username})"
+
+
+class PublicUserActivity(models.Model):
+    public_user = models.ForeignKey(PublicUser, on_delete=models.CASCADE, related_name='activity_logs')
+    login_time = models.DateTimeField(default=timezone.now)
+    logout_time = models.DateTimeField(null=True, blank=True)
+    last_seen = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'public_user_activity'
+        ordering = ['-login_time']
+
+    def __str__(self):
+        return f"{self.public_user.username} - {self.login_time}"
+
+
+class PublicPracticeResult(models.Model):
+    public_user = models.ForeignKey(PublicUser, on_delete=models.SET_NULL, null=True, blank=True, related_name='practice_results')
+    username = models.CharField(max_length=120)
+    quiz_id = models.IntegerField()
+    quiz_title = models.CharField(max_length=255)
+    score = models.FloatField(default=0)
+    total_marks = models.FloatField(default=0)
+    percentage = models.FloatField(default=0)
+    is_passed = models.BooleanField(default=False)
+    correct_count = models.IntegerField(default=0)
+    wrong_count = models.IntegerField(default=0)
+    attempted_count = models.IntegerField(default=0)
+    total_questions = models.IntegerField(default=0)
+    completed_at = models.DateTimeField(default=timezone.now)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'public_practice_results'
+        ordering = ['-completed_at']
+
+    def __str__(self):
+        return f"{self.username} - {self.quiz_title} - {self.percentage}%"
+
+
 class StudyMaterial ( models.Model ) :
     batch = models.ForeignKey ( 'Batches' , on_delete = models.CASCADE , null = True , blank = True )
     uploaded_by = models.ForeignKey ( 'Employee' , on_delete = models.CASCADE )

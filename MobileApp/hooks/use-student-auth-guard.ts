@@ -6,6 +6,7 @@ const PUBLIC_PATHS = new Set([
   "/",
   "/loginform",
   "/register",
+  "/dashboard",
   "/welcome",
   "/public-overview",
   "/app",

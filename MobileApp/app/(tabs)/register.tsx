@@ -21,6 +21,7 @@ type RegisterForm = {
   email: string;
   mobile: string;
   qualification: string;
+  pincode: string;
   location: string;
   city: string;
   state: string;
@@ -34,6 +35,7 @@ const initialForm: RegisterForm = {
   email: "",
   mobile: "",
   qualification: "",
+  pincode: "",
   location: "",
   city: "",
   state: "",
@@ -57,10 +59,10 @@ export default function RegisterScreen() {
   };
 
   useEffect(() => {
-    const value = form.location.trim();
+    const value = form.pincode.replace(/\D/g, "").slice(0, 6);
 
     if (!/^\d{6}$/.test(value)) {
-      setLocationHint(value ? "Area/location will be saved as entered." : "");
+      setLocationHint(value ? "Enter 6 digit pincode to fetch area." : "");
       updateField("city", "");
       updateField("state", "");
       return;
@@ -70,12 +72,15 @@ export default function RegisterScreen() {
 
     const fetchPincode = async () => {
       setFetchingLocation(true);
-      setLocationHint("Finding city and state...");
+      setLocationHint("Finding area, city and state...");
 
       try {
-        const response = await fetch(
-          `https://api.postalpincode.in/pincode/${value}`
-        );
+        const response = await Promise.race([
+          fetch(`https://api.postalpincode.in/pincode/${value}`),
+          new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error("Location lookup timed out")), 8000)
+          ),
+        ]);
         const data = await response.json();
         const postOffice = data?.[0]?.PostOffice?.[0];
 
@@ -86,20 +91,20 @@ export default function RegisterScreen() {
         if (postOffice) {
           setForm((current) => ({
             ...current,
+            location: postOffice.Name || current.location,
             city: postOffice.District || "",
             state: postOffice.State || "",
           }));
           setLocationHint(
-            `${postOffice.District || "City"}, ${postOffice.State || "State"}`
+            `${postOffice.Name || "Area"}, ${postOffice.District || "City"}, ${postOffice.State || "State"}`
           );
         } else {
-          updateField("city", "");
-          updateField("state", "");
-          setLocationHint("Pincode not found. You can enter area/location.");
+          setForm((current) => ({ ...current, location: "", city: "", state: "" }));
+          setLocationHint("Pincode not found. Please enter area manually.");
         }
       } catch {
         if (active) {
-          setLocationHint("Could not fetch location. Pincode will be saved.");
+          setLocationHint("Could not fetch area. Please check internet or enter area manually.");
         }
       } finally {
         if (active) {
@@ -113,7 +118,7 @@ export default function RegisterScreen() {
     return () => {
       active = false;
     };
-  }, [form.location]);
+  }, [form.pincode]);
 
   const handleSubmit = async () => {
     setErrorMsg("");
@@ -123,6 +128,7 @@ export default function RegisterScreen() {
       email: form.email.trim().toLowerCase(),
       mobile: form.mobile.replace(/\D/g, ""),
       qualification: form.qualification.trim(),
+      pincode: form.pincode.replace(/\D/g, "").slice(0, 6),
       location: form.location.trim(),
       city: form.city.trim(),
       state: form.state.trim(),
@@ -136,6 +142,7 @@ export default function RegisterScreen() {
       !cleaned.email ||
       !cleaned.mobile ||
       !cleaned.qualification ||
+      !cleaned.pincode ||
       !cleaned.location ||
       !cleaned.username ||
       !cleaned.password ||
@@ -152,6 +159,11 @@ export default function RegisterScreen() {
 
     if (!/^\d{10}$/.test(cleaned.mobile)) {
       setErrorMsg("Please enter a valid 10 digit Mobile Number.");
+      return;
+    }
+
+    if (!/^\d{6}$/.test(cleaned.pincode)) {
+      setErrorMsg("Please enter a valid 6 digit Pincode.");
       return;
     }
 
@@ -172,6 +184,7 @@ export default function RegisterScreen() {
       email: cleaned.email,
       mobile: cleaned.mobile,
       qualification: cleaned.qualification,
+      pincode: cleaned.pincode,
       location: cleaned.location,
       city: cleaned.city,
       state: cleaned.state,
@@ -238,10 +251,10 @@ export default function RegisterScreen() {
             />
             <InputRow
               icon="location-outline"
-              placeholder="Area or Pincode"
-              value={form.location}
-              onChangeText={(value) => updateField("location", value)}
-              keyboardType="default"
+              placeholder="Pincode"
+              value={form.pincode}
+              onChangeText={(value) => updateField("pincode", value.replace(/\D/g, "").slice(0, 6))}
+              keyboardType="phone-pad"
               editable={!loading}
               trailing={fetchingLocation ? <ActivityIndicator color="#5523D2" /> : null}
             />
@@ -258,6 +271,14 @@ export default function RegisterScreen() {
                 </ThemedText>
               </View>
             ) : null}
+
+            <InputRow
+              icon="navigate-outline"
+              placeholder="Area"
+              value={form.location}
+              onChangeText={(value) => updateField("location", value)}
+              editable={!loading}
+            />
 
             <InputRow
               icon="at-outline"

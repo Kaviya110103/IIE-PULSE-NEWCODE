@@ -1,8 +1,10 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom'
 import { Toaster } from 'react-hot-toast'
+import { ArrowRight, LogOut, ShieldCheck } from 'lucide-react'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import AppLayout from './components/layout/AppLayout'
 import Login from './pages/auth/Login'
+import logo from './assets/IIE.png'
 import './styles/global.css'
 
 // ── Admin ──────────────────────────────────────────────────────────────────
@@ -17,7 +19,7 @@ import {
   AdminCounselorSupportRequest, AdminCounselorSupportHistory,
   AdminStudentSupportRequest, AdminStudentSupportHistory, AdminAnnouncements, AdminFeeManagement,
   AdminCalendar, AdminGallery, AdminNews, AdminReferrals, AdminVlogs,
-  AdminEmployeeMonitoring, AdminStudentMonitoring,
+  AdminEmployeeMonitoring, AdminStudentMonitoring, AdminPublicUsers,
 } from './pages/admin/AdminPages'
 
 // ── Employee ───────────────────────────────────────────────────────────────
@@ -52,6 +54,111 @@ function ProtectedRoute({ children, allowedRoles }) {
   return children
 }
 
+function getDashboardPath(user) {
+  if (user?.user_type === 'admin') return '/admin'
+  if (user?.user_type === 'student') return '/student'
+  if (user?.designation === 'counselor') return '/counselor'
+  return '/employee'
+}
+
+function DashboardLanding() {
+  const { user, logout } = useAuth()
+  const navigate = useNavigate()
+  const path = getDashboardPath(user)
+  const role =
+    user?.user_type === 'employee'
+      ? user?.designation || 'Employee'
+      : user?.user_type || 'User'
+
+  if (user?.user_type !== 'student') {
+    return <Navigate to={path} replace />
+  }
+
+  return (
+    <div style={{
+      minHeight: '100vh',
+      display: 'grid',
+      placeItems: 'center',
+      padding: 24,
+      background: '#f1f5f9',
+      fontFamily: "'Public Sans', sans-serif",
+    }}>
+      <div style={{
+        width: '100%',
+        maxWidth: 920,
+        display: 'grid',
+        gridTemplateColumns: 'minmax(0, 1.05fr) minmax(300px, .95fr)',
+        background: '#fff',
+        border: '1px solid #e2e8f0',
+        borderRadius: 8,
+        boxShadow: '0 18px 50px rgba(15, 23, 42, .12)',
+        overflow: 'hidden',
+      }}>
+        <div style={{ padding: 36, background: '#0f1b2d', color: '#fff' }}>
+          <div style={{ width: 128, padding: 10, background: '#fff', borderRadius: 8, marginBottom: 28 }}>
+            <img src={logo} alt="IIE" style={{ width: '100%', display: 'block' }} />
+          </div>
+          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '7px 11px', borderRadius: 999, background: 'rgba(244,169,64,.14)', color: '#fcd17a', fontSize: 12, fontWeight: 700, marginBottom: 18 }}>
+            <ShieldCheck size={15} /> Session verified
+          </div>
+          <h1 style={{ margin: 0, fontSize: 34, lineHeight: 1.12, fontFamily: 'Georgia, serif' }}>Welcome back to IIE Pulse</h1>
+          <p style={{ margin: '14px 0 0', color: 'rgba(255,255,255,.68)', fontSize: 14, lineHeight: 1.7, maxWidth: 420 }}>
+            Your session is active. Continue to your workspace to manage classes, records, and daily activity.
+          </p>
+        </div>
+
+        <div style={{ padding: 36, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+          <div style={{ color: '#64748b', fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.08em' }}>Signed in as</div>
+          <h2 style={{ margin: '8px 0 4px', color: '#0f1b2d', fontSize: 26 }}>{user?.name || user?.username || 'User'}</h2>
+          <div style={{ color: '#64748b', fontSize: 14, textTransform: 'capitalize' }}>{role}</div>
+
+          <button
+            type="button"
+            onClick={() => navigate(path)}
+            style={{
+              marginTop: 28,
+              width: '100%',
+              minHeight: 48,
+              border: 'none',
+              borderRadius: 8,
+              background: '#1572e8',
+              color: '#fff',
+              fontWeight: 800,
+              fontSize: 14,
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 9,
+            }}
+          >
+            Go to Dashboard <ArrowRight size={18} />
+          </button>
+          <button
+            type="button"
+            onClick={logout}
+            style={{
+              marginTop: 12,
+              width: '100%',
+              minHeight: 44,
+              borderRadius: 8,
+              border: '1px solid #e2e8f0',
+              background: '#fff',
+              color: '#64748b',
+              fontWeight: 700,
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 8,
+            }}
+          >
+            <LogOut size={16} /> Logout
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function AppRoutes() {
   const { user, loading } = useAuth()
 
@@ -69,11 +176,10 @@ function AppRoutes() {
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   )
-  const defaultPath = user.user_type === 'admin' ? '/admin' : user.user_type === 'student' ? '/student' : user.designation === 'counselor' ? '/counselor' : '/employee'
-
   return (
     <Routes>
-      <Route path="/" element={<Navigate to={defaultPath} replace />} />
+      <Route path="/" element={user.user_type === 'student' ? <DashboardLanding /> : <Navigate to={getDashboardPath(user)} replace />} />
+      <Route path="/dashboard" element={<DashboardLanding />} />
 
       {/* ── ADMIN ─────────────────────────────────────────────────── */}
       <Route path="/admin" element={<ProtectedRoute allowedRoles={['admin']}><AppLayout role="admin" /></ProtectedRoute>}>
@@ -93,6 +199,7 @@ function AppRoutes() {
         <Route path="news" element={<AdminNews />} />
         <Route path="calendar" element={<AdminCalendar />} />
         <Route path="referrals" element={<AdminReferrals />} />
+        <Route path="public-users" element={<AdminPublicUsers />} />
         <Route path="fees" element={<AdminFeeManagement />} />   {/* ← ADD inside /admin routes */}
 
         <Route path="monitoring/employees" element={<AdminEmployeeMonitoring />} />

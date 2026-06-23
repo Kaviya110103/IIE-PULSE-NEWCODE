@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 import toast from 'react-hot-toast'
-import { Eye, EyeOff, LogIn, Mail, ArrowLeft, KeyRound } from 'lucide-react'
+import { Eye, EyeOff, LogIn, Mail, ArrowLeft, KeyRound, ShieldCheck, Users, GraduationCap } from 'lucide-react'
 import api from '../../api/client'
 import logo from '../../assets/IIE.png'
 
@@ -26,11 +26,10 @@ export default function Login() {
     if (result.success) {
       const d = result.data
       toast.success(`Welcome, ${d.name || d.username}!`)
-      if (d.user_type === 'admin') navigate('/admin')
-      else if (d.user_type === 'employee') {
-        if (d.designation === 'counselor') navigate('/counselor')
-        else navigate('/employee')
-      } else navigate('/student')
+      if (d.user_type === 'student') navigate('/dashboard')
+      else if (d.user_type === 'admin') navigate('/admin')
+      else if (d.designation === 'counselor') navigate('/counselor')
+      else navigate('/employee')
     } else {
       toast.error(result.error)
     }
@@ -75,9 +74,9 @@ export default function Login() {
   }
 
   const types = [
-    { value: 'admin', label: '⚙️ Admin' },
-    { value: 'employee', label: '👨‍🏫 Employee' },
-    { value: 'student', label: '🎓 Student' },
+    { value: 'admin', label: 'Admin' },
+    { value: 'employee', label: 'Employee' },
+    { value: 'student', label: 'Student' },
   ]
 
   const styles = `
@@ -98,38 +97,6 @@ export default function Login() {
       background: #0f1b2d;
       position: relative;
       overflow: hidden;
-    }
-
-    .iie-blob {
-      position: absolute;
-      border-radius: 50%;
-      filter: blur(80px);
-      opacity: 0.15;
-      pointer-events: none;
-    }
-    .iie-blob-1 {
-      width: 500px; height: 500px;
-      background: #f4a940;
-      top: -150px; left: -150px;
-      animation: blobFloat 8s ease-in-out infinite;
-    }
-    .iie-blob-2 {
-      width: 400px; height: 400px;
-      background: #2ec4b6;
-      bottom: -100px; right: 480px;
-      animation: blobFloat 8s ease-in-out infinite;
-      animation-delay: 3s;
-    }
-    .iie-blob-3 {
-      width: 300px; height: 300px;
-      background: #667eea;
-      top: 40%; left: 30%;
-      animation: blobFloat 8s ease-in-out infinite;
-      animation-delay: 6s;
-    }
-    @keyframes blobFloat {
-      0%, 100% { transform: translateY(0) scale(1); }
-      50% { transform: translateY(-20px) scale(1.04); }
     }
 
     /* ── LEFT PANEL ── */
@@ -193,8 +160,8 @@ export default function Login() {
       width: 36px; height: 36px;
       border-radius: 9px;
       display: flex; align-items: center; justify-content: center;
-      font-size: 16px;
       flex-shrink: 0;
+      color: #fff;
     }
     .iie-feature-text strong {
       display: block;
@@ -419,9 +386,6 @@ export default function Login() {
       <>
         <style>{styles}</style>
         <div className="iie-page">
-          <div className="iie-blob iie-blob-1" />
-          <div className="iie-blob iie-blob-2" />
-          <div className="iie-blob iie-blob-3" />
           <div className="iie-left">
             <div className="iie-left-logo"><img src={logo} alt="IIE Logo" /></div>
             <h1>Forgot Your<br />Password?</h1>
@@ -470,9 +434,6 @@ export default function Login() {
       <>
         <style>{styles}</style>
         <div className="iie-page">
-          <div className="iie-blob iie-blob-1" />
-          <div className="iie-blob iie-blob-2" />
-          <div className="iie-blob iie-blob-3" />
           <div className="iie-left">
             <div className="iie-left-logo"><img src={logo} alt="IIE Logo" /></div>
             <h1>Check Your<br />Email</h1>
@@ -551,10 +512,6 @@ export default function Login() {
     <>
       <style>{styles}</style>
       <div className="iie-page">
-        <div className="iie-blob iie-blob-1" />
-        <div className="iie-blob iie-blob-2" />
-        <div className="iie-blob iie-blob-3" />
-
         {/* Left Panel */}
         <div className="iie-left">
           <div className="iie-left-logo">
@@ -564,21 +521,21 @@ export default function Login() {
           <p>Your all-in-one platform for managing students, staff, batches, and academic progress at Indra Institute of Education.</p>
           <div className="iie-features">
             <div className="iie-feature">
-              <div className="iie-feature-icon" style={{ background: 'rgba(244,169,64,0.15)' }}>🎓</div>
+              <div className="iie-feature-icon" style={{ background: 'rgba(244,169,64,0.18)' }}><GraduationCap size={18} /></div>
               <div className="iie-feature-text">
                 <strong>Student Management</strong>
                 <span>Track attendance, sessions & progress</span>
               </div>
             </div>
             <div className="iie-feature">
-              <div className="iie-feature-icon" style={{ background: 'rgba(46,196,182,0.15)' }}>📊</div>
+              <div className="iie-feature-icon" style={{ background: 'rgba(46,196,182,0.18)' }}><ShieldCheck size={18} /></div>
               <div className="iie-feature-text">
                 <strong>Tests & Quizzes</strong>
                 <span>Assign and evaluate with ease</span>
               </div>
             </div>
             <div className="iie-feature">
-              <div className="iie-feature-icon" style={{ background: 'rgba(76,175,129,0.15)' }}>📢</div>
+              <div className="iie-feature-icon" style={{ background: 'rgba(76,175,129,0.18)' }}><Users size={18} /></div>
               <div className="iie-feature-text">
                 <strong>Announcements</strong>
                 <span>Reach students & staff instantly</span>
@@ -591,7 +548,7 @@ export default function Login() {
         <div className="iie-right">
           <div className="iie-right-inner">
             <div className="iie-right-logo">
-              {/* <img src={logo} alt="IIE" /> */}
+              <img src={logo} alt="IIE" />
               <div className="iie-right-logo-text">
                 <strong>IIE Pulse</strong>
                 <span>Indra Institute of Education</span>

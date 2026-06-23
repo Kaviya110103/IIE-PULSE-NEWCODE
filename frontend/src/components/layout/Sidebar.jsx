@@ -155,6 +155,7 @@ function AdminNav() {
       <NavItem to="/admin/news" icon="fa-newspaper" label="News" />
       <NavItem to="/admin/calendar" icon="fa-calendar-alt" label="Calendar" />
       <NavItem to="/admin/referrals" icon="fa-user-plus" label="Referrals" />
+      <NavItem to="/admin/public-users" icon="fa-users-viewfinder" label="Public Users" />
       <NavItem to="/admin/completed" icon="fa-graduation-cap" label="Completed Students" />
       <NavItem to="/admin/fees" icon="fa-rupee-sign" label="Fee Management" />  {/* ← ADD */}
 

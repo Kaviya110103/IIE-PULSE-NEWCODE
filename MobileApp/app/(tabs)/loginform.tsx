@@ -30,6 +30,15 @@ export default function LoginForm() {
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
+    const redirectIfLoggedIn = async () => {
+      const token = await AsyncStorage.getItem("access_token");
+      if (token) {
+        router.replace("/dashboard" as any);
+      }
+    };
+
+    redirectIfLoggedIn();
+
     const timer = setTimeout(() => {
       setShowSplash(false);
     }, 2000);
@@ -70,7 +79,7 @@ export default function LoginForm() {
       const publicResult = await loginGuest(username, cleanPassword);
 
       if (publicResult.success) {
-        router.replace("/welcome" as any);
+        router.replace("/dashboard" as any);
         return;
       }
 
@@ -91,7 +100,7 @@ export default function LoginForm() {
       await AsyncStorage.setItem("student_pk", String(user.student_pk || ""));
       await AsyncStorage.setItem("student_name", user.name || "");
 
-      router.replace("/welcome" as any);
+      router.replace("/dashboard" as any);
     } catch (error: any) {
       setErrorMsg(
         error?.response?.data?.error ||
@@ -110,16 +119,16 @@ export default function LoginForm() {
         style={styles.keyboard}
       >
         <Animated.View style={[styles.formCard, { opacity: fadeAnim }]}>
-          <View style={styles.iconCircle}>
-            <Ionicons name="lock-closed-outline" size={38} color="#5523D2" />
+          <View style={styles.logoPanel}>
+            <Image source={appLogo} style={styles.cardLogo} resizeMode="contain" />
           </View>
 
           <ThemedText style={styles.titleText}>
-            {loading ? "Signing in..." : "Login"}
+            {loading ? "Signing in..." : "Welcome to IIE Pulse"}
           </ThemedText>
 
           <ThemedText style={styles.subTitle}>
-            Access your account securely
+            Login to continue your learning dashboard
           </ThemedText>
 
           <View style={styles.inputWrapper}>
@@ -206,7 +215,7 @@ const styles = StyleSheet.create({
   },
   container: {
     flex: 1,
-    backgroundColor: "#F5F3FF",
+    backgroundColor: "#F6F3FF",
     justifyContent: "center",
     alignItems: "center",
     padding: 18,
@@ -218,52 +227,56 @@ const styles = StyleSheet.create({
   formCard: {
     width: "100%",
     backgroundColor: "#FFFFFF",
-    borderRadius: 24,
+    borderRadius: 28,
     padding: 24,
     borderWidth: 1,
-    borderColor: "#E9D5FF",
+    borderColor: "#EDE9FE",
     shadowColor: "#5523D2",
-    shadowOpacity: 0.16,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 9 },
-    elevation: 6,
+    shadowOpacity: 0.2,
+    shadowRadius: 24,
+    shadowOffset: { width: 0, height: 14 },
+    elevation: 8,
     alignItems: "center",
   },
-  iconCircle: {
-    width: 66,
-    height: 66,
+  logoPanel: {
+    width: "100%",
+    height: 110,
     borderRadius: 22,
-    backgroundColor: "#F5F3FF",
+    backgroundColor: "#FFFFFF",
     alignItems: "center",
     justifyContent: "center",
-    borderWidth: 1,
-    borderColor: "#E9D5FF",
+    marginBottom: 4,
+  },
+  cardLogo: {
+    width: "82%",
+    height: 92,
   },
   titleText: {
-    color: "#111827",
-    fontSize: 24,
-    fontWeight: "800",
-    marginTop: 16,
+    color: "#1F1335",
+    fontSize: 25,
+    lineHeight: 32,
+    fontWeight: "900",
+    marginTop: 8,
     marginBottom: 6,
     textAlign: "center",
   },
   subTitle: {
     fontSize: 13,
     color: "#6B7280",
-    marginBottom: 24,
+    marginBottom: 22,
     textAlign: "center",
   },
   inputWrapper: {
     flexDirection: "row",
     alignItems: "center",
     borderWidth: 1,
-    borderColor: "#E9D5FF",
-    borderRadius: 14,
+    borderColor: "#DDD6FE",
+    borderRadius: 16,
     paddingHorizontal: 14,
     paddingVertical: 12,
     marginBottom: 14,
     width: "100%",
-    backgroundColor: "#F6F3FF",
+    backgroundColor: "#FBF9FF",
   },
   input: {
     flex: 1,
@@ -289,8 +302,8 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     gap: 8,
-    paddingVertical: 14,
-    borderRadius: 14,
+    paddingVertical: 15,
+    borderRadius: 17,
     shadowColor: "#5523D2",
     shadowOpacity: 0.35,
     shadowRadius: 8,

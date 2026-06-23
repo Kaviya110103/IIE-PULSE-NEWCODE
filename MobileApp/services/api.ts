@@ -3,7 +3,7 @@ import axios from "axios";
 import Constants from "expo-constants";
 import { Platform } from "react-native";
 
-const DEFAULT_DEV_API = "https://testiie.indrainstitute.com/api/";
+const DEFAULT_DEV_API = "http://192.168.1.3:8000/api/";
 
 function normalizeApiBaseUrl(url: string) {
   return url.endsWith("/") ? url : `${url}/`;
@@ -195,12 +195,18 @@ type LoginPayload = {
 
 function getApiErrorMessage(error: any, fallback = "Request failed") {
   const data = error?.response?.data;
+  const status = error?.response?.status;
 
   if (!data) {
     return error?.message || fallback;
   }
 
   if (typeof data === "string") {
+    if (/<\/?[a-z][\s\S]*>/i.test(data) || data.includes("<!DOCTYPE")) {
+      return status && status >= 500
+        ? "Server setup error. Please run backend migrations and try again."
+        : fallback;
+    }
     return data;
   }
 
@@ -225,6 +231,7 @@ export type GuestRegistrationPayload = {
   email: string;
   mobile: string;
   qualification: string;
+  pincode?: string;
   location: string;
   city?: string;
   state?: string;
@@ -370,6 +377,24 @@ export async function loginUser(payload: LoginPayload) {
 
 export async function registerGuest(payload: GuestRegistrationPayload) {
   try {
+    try {
+      const response = await axios.post(`${API_BASE_URL}public-users/register/`, payload, {
+        timeout: 8000,
+        headers: { "Content-Type": "application/json" },
+      });
+      return {
+        success: true,
+        data: response.data?.data || response.data,
+      };
+    } catch (serverError: any) {
+      if (serverError?.response) {
+        return {
+          success: false,
+          error: getApiErrorMessage(serverError, "Guest registration failed"),
+        };
+      }
+    }
+
     const users = await getGuestUsers();
     const username = payload.username.trim().toLowerCase();
     const email = payload.email.trim().toLowerCase();
@@ -414,6 +439,47 @@ export async function loginGuest(usernameInput: string, passwordInput: string) {
   try {
     const loginId = usernameInput.trim().toLowerCase();
     const password = passwordInput.trim();
+
+    try {
+      const response = await axios.post(`${API_BASE_URL}public-users/login/`, {
+        username: loginId,
+        password,
+      }, {
+        timeout: 8000,
+        headers: { "Content-Type": "application/json" },
+      });
+      const guestUser = response.data?.data || response.data;
+
+      await AsyncStorage.multiRemove([
+        "access_token",
+        "refresh_token",
+        "student_id",
+        "student_pk",
+        "student_name",
+      ]);
+
+      await AsyncStorage.setItem(
+        GUEST_SESSION_KEY,
+        JSON.stringify({
+          username: guestUser.username,
+          name: guestUser.name,
+          user_type: "public",
+        })
+      );
+
+      return {
+        success: true,
+        data: guestUser,
+      };
+    } catch (serverError: any) {
+      if (serverError?.response) {
+        return {
+          success: false,
+          error: getApiErrorMessage(serverError, "Guest login failed"),
+        };
+      }
+    }
+
     const users = await getGuestUsers();
 
     const guestUser = users.find(

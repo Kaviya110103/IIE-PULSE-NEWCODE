@@ -241,9 +241,14 @@ export default function App() {
         : isPracticeAttempt
         ? `/quiz/practice/${quiz.id}/submit/`
         : `/quiz/${quiz.id}/take/`;
+      const guestSessionRaw = isPracticeAttempt
+        ? await AsyncStorage.getItem("guest_session")
+        : "";
+      const guestSession = guestSessionRaw ? JSON.parse(guestSessionRaw) : {};
       const response = await api.post(submitUrl, {
         answers: payloadAnswers,
         auto_submitted: autoSubmitted,
+        username: guestSession?.username,
       });
 
       const resultData = {

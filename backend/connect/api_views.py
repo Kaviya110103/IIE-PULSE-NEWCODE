@@ -4,6 +4,7 @@ import re
 import mimetypes
 from html import escape
 from django.contrib.auth import authenticate
+from django.contrib.auth.hashers import check_password, make_password
 from django.contrib.auth.models import User
 from django.db.models import Q
 from django.db import DatabaseError, IntegrityError, OperationalError
@@ -20,7 +21,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from connect.permissions import is_admin_user, is_staff_employee
 # Add this import at the top with your other imports
 from django.contrib.auth.decorators import login_required
-from datetime import datetime
+from datetime import datetime, timedelta
 import PyPDF2
 from django.db import transaction  # Add this at the top of your views.py
 from django.core.cache import cache
@@ -119,6 +120,7 @@ from .models import (
     Quiz, QuizQuestion, QuizAttempt, QuizAnswer,
     CompletedStudent, SessionCompletionRequest, TestResult,FeePaymentRequest,
     GalleryItem, VlogItem, NewsItem, CalendarEvent, Referral,
+    PublicUser, PublicUserActivity, PublicPracticeResult,
 )
 from .serializers import (
     CourseSerializer, EmployeeSerializer,
@@ -141,9 +143,34 @@ def get_tokens_for_user(user):
     return {'refresh': str(refresh), 'access': str(refresh.access_token)}
 
 
+ACTIVITY_TIMEOUT = timedelta(minutes=5)
+
+
+def close_stale_activity_sessions(qs=None):
+    now = timezone.now()
+    cutoff = now - ACTIVITY_TIMEOUT
+    stale_qs = qs or UserActivity.objects.all()
+    stale_qs = stale_qs.filter(
+        logout_time__isnull=True,
+        last_seen__lt=cutoff,
+    )
+
+    for activity_id, last_seen in stale_qs.values_list('id', 'last_seen'):
+        logout_at = last_seen + ACTIVITY_TIMEOUT if last_seen else cutoff
+        UserActivity.objects.filter(id=activity_id, logout_time__isnull=True).update(
+            logout_time=logout_at,
+            last_seen=logout_at,
+        )
+
+
 def record_user_login(user, user_type, employee=None, student=None):
     now = timezone.now()
     try:
+        close_stale_activity_sessions(UserActivity.objects.filter(user=user))
+        UserActivity.objects.filter(
+            user=user,
+            logout_time__isnull=True,
+        ).update(logout_time=now, last_seen=now)
         UserActivity.objects.create(
             user=user,
             user_type=user_type,
@@ -169,6 +196,11 @@ def record_user_logout(user):
             activity.save(update_fields=['logout_time', 'last_seen'])
     except Exception:
         logger.exception("Failed to record user logout for user_id=%s", getattr(user, 'id', None))
+
+
+def prepare_activity_monitoring_queryset(qs):
+    close_stale_activity_sessions(qs)
+    return qs
 
 
 def apply_activity_date_filters(qs, params):
@@ -2395,6 +2427,93 @@ def practice_quizzes(request):
     })
 
 
+def close_public_user_activity(public_user):
+    activity = PublicUserActivity.objects.filter(
+        public_user=public_user,
+        logout_time__isnull=True,
+    ).order_by('-login_time').first()
+    if activity:
+        now = timezone.now()
+        activity.logout_time = now
+        activity.last_seen = now
+        activity.save(update_fields=['logout_time', 'last_seen'])
+
+
+def serialize_public_user(user):
+    return {
+        'id': user.id,
+        'name': user.name,
+        'email': user.email,
+        'mobile': user.mobile,
+        'qualification': user.qualification,
+        'location': user.location,
+        'city': user.city,
+        'state': user.state,
+        'username': user.username,
+        'created_at': user.created_at,
+    }
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def public_user_register(request):
+    username = str(request.data.get('username', '')).strip().lower()
+    password = str(request.data.get('password', '')).strip()
+    email = str(request.data.get('email', '')).strip().lower()
+
+    if not username or not password:
+        return Response({'error': 'Username and password are required.'}, status=400)
+
+    existing_user = PublicUser.objects.filter(username__iexact=username)
+    if email:
+        existing_user = PublicUser.objects.filter(Q(username__iexact=username) | Q(email__iexact=email))
+
+    if existing_user.exists():
+        return Response({'error': 'Username or email already registered.'}, status=400)
+
+    public_user = PublicUser.objects.create(
+        name=str(request.data.get('name', '')).strip() or username,
+        email=email,
+        mobile=str(request.data.get('mobile', '')).strip(),
+        qualification=str(request.data.get('qualification', '')).strip(),
+        location=str(request.data.get('location', '')).strip(),
+        city=str(request.data.get('city', '')).strip(),
+        state=str(request.data.get('state', '')).strip(),
+        username=username,
+        password=make_password(password),
+    )
+    return Response({'success': True, 'data': serialize_public_user(public_user)}, status=201)
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def public_user_login(request):
+    login_id = str(request.data.get('username', '')).strip().lower()
+    password = str(request.data.get('password', '')).strip()
+
+    public_user = PublicUser.objects.filter(
+        Q(username__iexact=login_id) | Q(email__iexact=login_id)
+    ).first()
+
+    if not public_user or not check_password(password, public_user.password):
+        return Response({'error': 'Invalid username/email or password.'}, status=401)
+
+    close_public_user_activity(public_user)
+    now = timezone.now()
+    PublicUserActivity.objects.create(public_user=public_user, login_time=now, last_seen=now)
+    return Response({'success': True, 'data': serialize_public_user(public_user)})
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def public_user_logout(request):
+    username = str(request.data.get('username', '')).strip().lower()
+    public_user = PublicUser.objects.filter(Q(username__iexact=username) | Q(email__iexact=username)).first()
+    if public_user:
+        close_public_user_activity(public_user)
+    return Response({'success': True})
+
+
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def submit_practice_quiz(request, quiz_id):
@@ -2421,6 +2540,24 @@ def submit_practice_quiz(request, quiz_id):
 
     percentage = round((score / total_marks) * 100, 1) if total_marks else 0
     wrong_count = attempted_count - correct_count
+    username = str(request.data.get('username', '')).strip().lower()
+    public_user = PublicUser.objects.filter(Q(username__iexact=username) | Q(email__iexact=username)).first() if username else None
+    if username:
+        PublicPracticeResult.objects.create(
+            public_user=public_user,
+            username=username,
+            quiz_id=quiz.id,
+            quiz_title=quiz.title,
+            score=score,
+            total_marks=total_marks,
+            percentage=percentage,
+            is_passed=percentage >= quiz.passing_marks,
+            correct_count=correct_count,
+            wrong_count=wrong_count,
+            attempted_count=attempted_count,
+            total_questions=questions.count(),
+            completed_at=timezone.now(),
+        )
 
     return Response({
         'score': score,
@@ -2432,6 +2569,47 @@ def submit_practice_quiz(request, quiz_id):
         'attempted_count': attempted_count,
         'total_questions': questions.count(),
     })
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def admin_public_users(request):
+    if not is_admin_user(request.user):
+        return Response({'error': 'Admin access required.'}, status=status.HTTP_403_FORBIDDEN)
+
+    tab = request.query_params.get('tab', 'users')
+
+    if tab == 'results':
+        results = PublicPracticeResult.objects.select_related('public_user').order_by('-completed_at')
+        return Response({'results': [{
+            'id': result.id,
+            'name': result.public_user.name if result.public_user else '',
+            'username': result.username,
+            'quiz_title': result.quiz_title,
+            'score': result.score,
+            'total_marks': result.total_marks,
+            'percentage': result.percentage,
+            'is_passed': result.is_passed,
+            'correct_count': result.correct_count,
+            'attempted_count': result.attempted_count,
+            'total_questions': result.total_questions,
+            'completed_at': result.completed_at,
+        } for result in results]})
+
+    if tab == 'logins':
+        activities = PublicUserActivity.objects.select_related('public_user').order_by('-login_time')
+        return Response({'results': [{
+            'id': activity.id,
+            'name': activity.public_user.name,
+            'username': activity.public_user.username,
+            'email': activity.public_user.email,
+            'login_time': activity.login_time,
+            'logout_time': activity.logout_time,
+            'last_seen': activity.last_seen,
+        } for activity in activities]})
+
+    users = PublicUser.objects.all().order_by('-created_at')
+    return Response({'results': [serialize_public_user(user) for user in users]})
 
 
 @api_view(['GET'])
@@ -3438,6 +3616,7 @@ def admin_employee_monitoring(request):
 
     params = request.query_params
     qs = UserActivity.objects.filter(user_type='employee').select_related('user', 'employee')
+    qs = prepare_activity_monitoring_queryset(qs)
     qs = apply_activity_date_filters(qs, params)
 
     branch = params.get('branch')
@@ -3475,6 +3654,7 @@ def admin_student_monitoring(request):
 
     params = request.query_params
     qs = UserActivity.objects.filter(user_type='student').select_related('user', 'student', 'student__assigned_staff')
+    qs = prepare_activity_monitoring_queryset(qs)
     qs = apply_activity_date_filters(qs, params)
 
     branch = params.get('branch')
@@ -3529,6 +3709,7 @@ def mentor_student_monitoring(request):
         user_type='student',
         student__assigned_staff=mentor,
     ).select_related('user', 'student', 'student__assigned_staff')
+    qs = prepare_activity_monitoring_queryset(qs)
     qs = apply_activity_date_filters(qs, params)
 
     search = params.get('search')

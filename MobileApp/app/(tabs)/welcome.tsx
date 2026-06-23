@@ -43,6 +43,7 @@ type ModuleKey =
   | "news"
   | "newsDetail"
   | "referral"
+  | "contact"
   | "about";
 
 const sideNavItems: Array<{
@@ -65,6 +66,7 @@ const sideNavItems: Array<{
   { key: "gallery", label: "Gallery", icon: "image-outline", module: "gallery" },
   { key: "vlogs", label: "Vlogs", icon: "videocam-outline", module: "vlogs" },
   { key: "news", label: "News", icon: "newspaper-outline", module: "news" },
+  { key: "contact", label: "Contact Us", icon: "business-outline", module: "contact" },
 ];
 
 const bottomNavItems: Array<{
@@ -101,19 +103,19 @@ type CourseItem = {
 };
 
 const courseItems: CourseItem[] = [
-  { name: "Artificial Intelligence (AI)", category: "Data & AI", link: "https://indrainstitute.com/courses/artificial-intelligence/" },
+  { name: "Artificial Intelligence (AI)", category: "Data & AI", link: "https://indrainstitute.com/courses/ai/" },
   { name: "Python with DS & ML", category: "Data & AI", link: "https://indrainstitute.com/courses/python-with-ds-ml/" },
   { name: "Full Stack Python", category: "Programming", link: "https://indrainstitute.com/courses/full-stack-python/" },
-  { name: "Core Python", category: "Programming", link: "https://indrainstitute.com/courses/core-python/" },
+  { name: "Core Python", category: "Programming", link: "https://indrainstitute.com/courses/core-python-2/" },
   { name: "Full Stack Java", category: "Programming", link: "https://indrainstitute.com/courses/full-stack-java/" },
   { name: "Core Java", category: "Programming", link: "https://indrainstitute.com/courses/core-java/" },
   { name: "MERN Stack", category: "Programming", link: "https://indrainstitute.com/courses/mern-stack/" },
   { name: "MERN Stack with AWS", category: "Cloud & DevOps", link: "https://indrainstitute.com/courses/mern-stack-with-aws/" },
-  { name: "Java Cloud Architect", category: "Cloud & DevOps", link: "https://indrainstitute.com/courses/java-cloud-architect/" },
+  { name: "Java Cloud Architect", category: "Cloud & DevOps", link: "https://indrainstitute.com/?p=763&post_type=courses" },
   { name: "Data Analytics", category: "Data & AI", link: "https://indrainstitute.com/courses/data-analytics/" },
   { name: "Data Scientist Master Programme", category: "Data & AI", link: "https://indrainstitute.com/courses/data-scientist-master-programme/" },
   { name: "Business Analytics", category: "Data & AI", link: "https://indrainstitute.com/courses/business-analytics/" },
-  { name: "Flutter", category: "Programming", link: "https://indrainstitute.com/courses/flutter-2/" },
+  { name: "Flutter", category: "Programming", link: "https://indrainstitute.com/courses/flutter/" },
   { name: "UI/UX", category: "Design", link: "https://indrainstitute.com/courses/ui-ux/" },
   { name: "Web Development", category: "Programming", link: "https://indrainstitute.com/courses/web-development/" },
   { name: "AWS", category: "Cloud & DevOps", link: "https://indrainstitute.com/courses/aws/" },
@@ -140,7 +142,7 @@ const courseItems: CourseItem[] = [
   { name: "SNE + Cloud & CEH", category: "Cybersecurity", link: "https://indrainstitute.com/courses/sne-cloud-ceh/" },
   { name: "SNE + Cloud & DevOps", category: "Cloud & DevOps", link: "https://indrainstitute.com/courses/sne-cloud-devops/" },
   { name: "AWS & DevOps", category: "Cloud & DevOps", link: "https://indrainstitute.com/courses/aws-devops/" },
-  { name: "RHCE + AWS", category: "Cloud & DevOps", link: "https://indrainstitute.com/courses/rhce-amazon-web-service/" },
+  { name: "RHCE + AWS", category: "Cloud & DevOps", link: "https://indrainstitute.com/courses/rhceamazon-web-service/" },
 ];
 
 const instagramUrl = "https://www.instagram.com/iie_indra_institute?igsh=MXB1OW03N3QyNmV2ag==";
@@ -150,6 +152,27 @@ const googleFormUrl = "https://forms.gle/nKXHiEnnZHZeegig7";
 const appLogoLight = require("../../assets/images/logo-light.png");
 const heroStudentsImage = require("../../assets/images/hero-students.png");
 
+const contactLocations = [
+  {
+    name: "Head Office",
+    branch: "Coimbatore",
+    address: "65/1 S.S complex 2, 7th street, Tatabad, 100ft road, Near BEA, Coimbatore - 641012",
+    phone: "+919043119111",
+  },
+  {
+    name: "Hopes Branch",
+    branch: "Coimbatore",
+    address: "GR complex 1st floor, 1567 Avinashi Road, Hopes, Coimbatore - 641004",
+    phone: "+918124119111",
+  },
+  {
+    name: "Kuniyamuthur Branch",
+    branch: "Coimbatore",
+    address: "First Floor, AAKIFAA Complex, Palghat Main Road, Opposite to Muthoot Finance, Coimbatore - 641008",
+    phone: "+919626779111",
+  },
+];
+
 function openExternalLink(url: string) {
   if (url) {
     Linking.openURL(url);
@@ -157,6 +180,14 @@ function openExternalLink(url: string) {
   }
 
   Alert.alert("Link not added", "Please share this link to enable the button.");
+}
+
+function openPhone(phone: string) {
+  Linking.openURL(`tel:${phone.replace(/\D/g, "")}`);
+}
+
+function openMap(address: string) {
+  Linking.openURL(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`);
 }
 
 export default function WelcomeScreen() {
@@ -177,20 +208,23 @@ export default function WelcomeScreen() {
   const [errorMsg, setErrorMsg] = useState("");
   const [activeNewsIndex, setActiveNewsIndex] = useState(0);
   const [isPrivateUser, setIsPrivateUser] = useState(false);
-  const drawerSwipeResponder = useRef(
-    PanResponder.create({
-      onMoveShouldSetPanResponder: (event, gesture) =>
-        !drawerOpen &&
-        event.nativeEvent.pageX <= 28 &&
-        gesture.dx > 24 &&
-        Math.abs(gesture.dy) < 24,
-      onPanResponderRelease: (_event, gesture) => {
-        if (gesture.dx > 42) {
-          setDrawerOpen(true);
-        }
-      },
-    })
-  ).current;
+  const drawerSwipeResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onMoveShouldSetPanResponder: (event, gesture) =>
+          !drawerOpen &&
+          isPrivateUser &&
+          event.nativeEvent.pageX <= 28 &&
+          gesture.dx > 24 &&
+          Math.abs(gesture.dy) < 24,
+        onPanResponderRelease: (_event, gesture) => {
+          if (gesture.dx > 42 && isPrivateUser) {
+            setDrawerOpen(true);
+          }
+        },
+      }),
+    [drawerOpen, isPrivateUser]
+  );
 
   useEffect(() => {
     loadSession();
@@ -199,7 +233,7 @@ export default function WelcomeScreen() {
 
   useEffect(() => {
     const requestedModule = Array.isArray(module) ? module[0] : module;
-    const allowedModules: ModuleKey[] = ["home", "gallery", "vlogs", "practice", "calendar", "announcement", "news", "referral", "about"];
+    const allowedModules: ModuleKey[] = ["home", "gallery", "vlogs", "practice", "calendar", "announcement", "news", "referral", "contact", "about"];
     if (requestedModule && allowedModules.includes(requestedModule as ModuleKey)) {
       setActiveModule(requestedModule as ModuleKey);
     }
@@ -207,9 +241,14 @@ export default function WelcomeScreen() {
 
   useFocusEffect(
     useCallback(() => {
+      setDrawerOpen(false);
       loadSession();
     }, [])
   );
+
+  useEffect(() => {
+    setDrawerOpen(false);
+  }, [isPrivateUser]);
 
   useEffect(() => {
     if (!news.length) {
@@ -263,6 +302,7 @@ export default function WelcomeScreen() {
         return true;
       }
 
+      router.replace("/dashboard" as any);
       return true;
     });
 
@@ -377,6 +417,22 @@ export default function WelcomeScreen() {
   };
 
   const handleLogout = async () => {
+    try {
+      const token = await AsyncStorage.getItem("access_token");
+      const refresh = await AsyncStorage.getItem("refresh_token");
+      if (token) {
+        await api.post("auth/logout/", { refresh });
+      } else {
+        const guestRaw = await AsyncStorage.getItem("guest_session");
+        const guest = guestRaw ? JSON.parse(guestRaw) : null;
+        if (guest?.username) {
+          await api.post("public-users/logout/", { username: guest.username });
+        }
+      }
+    } catch {
+      // Keep local logout responsive even if the network request fails.
+    }
+
     await AsyncStorage.multiRemove([
       "guest_session",
       "access_token",
@@ -384,6 +440,7 @@ export default function WelcomeScreen() {
       "student_id",
       "student_pk",
       "student_name",
+      "session_paused",
     ]);
     setIsPrivateUser(false);
     setActiveModule("home");
@@ -519,6 +576,8 @@ export default function WelcomeScreen() {
           <EventDetailModule event={selectedEvent} onBack={() => setActiveModule("home")} />
         ) : activeModule === "referral" ? (
           <ReferralModule />
+        ) : activeModule === "contact" ? (
+          <ContactModule />
         ) : (
           <PlaceholderModule module={activeModule} />
         )}
@@ -1486,6 +1545,78 @@ function PracticeModule() {
   );
 }
 
+function ContactModule() {
+  return (
+    <ModulePanel title="Contact Us" icon="business-outline">
+      <View style={styles.contactHero}>
+        <View style={styles.contactHeroIcon}>
+          <Ionicons name="business-outline" size={34} color="#FFFFFF" />
+        </View>
+        <ThemedText style={styles.contactHeroTitle}>Our Locations</ThemedText>
+        <ThemedText style={styles.contactHeroText}>
+          Reach the nearest IIE branch for course guidance, admissions and support.
+        </ThemedText>
+      </View>
+
+      <View style={styles.contactQuickActions}>
+        <Pressable style={styles.contactQuickAction} onPress={() => openPhone(contactLocations[0].phone)}>
+          <Ionicons name="call-outline" size={20} color="#5523D2" />
+          <ThemedText style={styles.contactQuickText}>Call</ThemedText>
+        </Pressable>
+        <Pressable style={styles.contactQuickAction} onPress={() => openExternalLink(websiteUrl)}>
+          <Ionicons name="globe-outline" size={20} color="#5523D2" />
+          <ThemedText style={styles.contactQuickText}>Website</ThemedText>
+        </Pressable>
+        <Pressable style={styles.contactQuickAction} onPress={() => openExternalLink(instagramUrl)}>
+          <Ionicons name="logo-instagram" size={20} color="#5523D2" />
+          <ThemedText style={styles.contactQuickText}>Instagram</ThemedText>
+        </Pressable>
+      </View>
+
+      <View style={styles.contactList}>
+        {contactLocations.map((location, index) => (
+          <View key={location.name} style={styles.contactCard}>
+            <View style={styles.contactCardTop}>
+              <View style={styles.contactNumberBadge}>
+                <ThemedText style={styles.contactNumberText}>{index + 1}</ThemedText>
+              </View>
+              <View style={styles.contactTitleWrap}>
+                <ThemedText style={styles.contactCardTitle}>{location.name}</ThemedText>
+                <ThemedText style={styles.contactCardSub}>{location.branch}</ThemedText>
+              </View>
+            </View>
+
+            <Pressable style={styles.contactInfoRow} onPress={() => openMap(location.address)}>
+              <View style={styles.contactInfoIcon}>
+                <Ionicons name="location-outline" size={19} color="#5523D2" />
+              </View>
+              <ThemedText style={styles.contactAddress}>{location.address}</ThemedText>
+            </Pressable>
+
+            <Pressable style={styles.contactInfoRow} onPress={() => openPhone(location.phone)}>
+              <View style={styles.contactInfoIcon}>
+                <Ionicons name="call-outline" size={18} color="#16A34A" />
+              </View>
+              <ThemedText style={styles.contactPhone}>{location.phone.replace("+91", "+91 ")}</ThemedText>
+            </Pressable>
+
+            <View style={styles.contactActions}>
+              <Pressable style={styles.contactActionButton} onPress={() => openPhone(location.phone)}>
+                <Ionicons name="call" size={16} color="#FFFFFF" />
+                <ThemedText style={styles.contactActionText}>Call Branch</ThemedText>
+              </Pressable>
+              <Pressable style={styles.contactMapButton} onPress={() => openMap(location.address)}>
+                <Ionicons name="navigate-outline" size={16} color="#5523D2" />
+                <ThemedText style={styles.contactMapText}>Map</ThemedText>
+              </Pressable>
+            </View>
+          </View>
+        ))}
+      </View>
+    </ModulePanel>
+  );
+}
+
 function PlaceholderModule({ module }: { module: ModuleKey }) {
   const titles: Record<ModuleKey, string> = {
     home: "Home",
@@ -1497,6 +1628,7 @@ function PlaceholderModule({ module }: { module: ModuleKey }) {
     announcement: "Announcement",
     news: "News",
     referral: "Referral",
+    contact: "Contact Us",
     about: "About IIE",
     newsDetail: "News Details",
   };
@@ -2599,6 +2731,173 @@ const styles = StyleSheet.create({
   socialButtonText: {
     color: "#5523D2",
     fontSize: 12,
+    fontWeight: "900",
+  },
+  contactHero: {
+    backgroundColor: "#0B1220",
+    borderRadius: 8,
+    padding: 22,
+    alignItems: "center",
+    marginBottom: 14,
+  },
+  contactHeroIcon: {
+    width: 66,
+    height: 66,
+    borderRadius: 20,
+    backgroundColor: "#5523D2",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 13,
+  },
+  contactHeroTitle: {
+    color: "#FFFFFF",
+    fontSize: 27,
+    lineHeight: 34,
+    fontWeight: "900",
+    textAlign: "center",
+  },
+  contactHeroText: {
+    color: "#CBD5E1",
+    fontSize: 13,
+    lineHeight: 20,
+    fontWeight: "700",
+    textAlign: "center",
+    marginTop: 8,
+  },
+  contactQuickActions: {
+    flexDirection: "row",
+    gap: 9,
+    marginBottom: 14,
+  },
+  contactQuickAction: {
+    flex: 1,
+    minHeight: 70,
+    borderRadius: 8,
+    backgroundColor: "#F5F3FF",
+    borderWidth: 1,
+    borderColor: "#E9D5FF",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+  },
+  contactQuickText: {
+    color: "#5523D2",
+    fontSize: 12,
+    fontWeight: "900",
+  },
+  contactList: {
+    gap: 13,
+  },
+  contactCard: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    padding: 14,
+    shadowColor: "#0F172A",
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 3,
+  },
+  contactCardTop: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 11,
+    marginBottom: 13,
+  },
+  contactNumberBadge: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    backgroundColor: "#5523D2",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  contactNumberText: {
+    color: "#FFFFFF",
+    fontSize: 16,
+    fontWeight: "900",
+  },
+  contactTitleWrap: {
+    flex: 1,
+  },
+  contactCardTitle: {
+    color: "#111827",
+    fontSize: 18,
+    lineHeight: 23,
+    fontWeight: "900",
+  },
+  contactCardSub: {
+    color: "#6B7280",
+    fontSize: 12,
+    fontWeight: "800",
+    marginTop: 2,
+  },
+  contactInfoRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 10,
+    paddingVertical: 9,
+  },
+  contactInfoIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    backgroundColor: "#F5F3FF",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  contactAddress: {
+    flex: 1,
+    color: "#1F2937",
+    fontSize: 13.5,
+    lineHeight: 21,
+    fontWeight: "800",
+    textDecorationLine: "underline",
+  },
+  contactPhone: {
+    color: "#111827",
+    fontSize: 15,
+    lineHeight: 22,
+    fontWeight: "900",
+    textDecorationLine: "underline",
+  },
+  contactActions: {
+    flexDirection: "row",
+    gap: 9,
+    marginTop: 8,
+  },
+  contactActionButton: {
+    flex: 1,
+    minHeight: 42,
+    borderRadius: 8,
+    backgroundColor: "#5523D2",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 7,
+  },
+  contactActionText: {
+    color: "#FFFFFF",
+    fontSize: 13,
+    fontWeight: "900",
+  },
+  contactMapButton: {
+    minWidth: 92,
+    minHeight: 42,
+    borderRadius: 8,
+    backgroundColor: "#F5F3FF",
+    borderWidth: 1,
+    borderColor: "#E9D5FF",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+  },
+  contactMapText: {
+    color: "#5523D2",
+    fontSize: 13,
     fontWeight: "900",
   },
   modulePanel: {
