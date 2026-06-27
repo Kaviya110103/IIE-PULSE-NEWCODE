@@ -60,7 +60,8 @@ python manage.py createsuperuser
 ```bash
 python manage.py runserver 8000
 ```
-API base URL: `http://localhost:8000/api/`
+Local API base URL: `http://localhost:8000/api/`
+Deployment API base URL: `https://testiie.indrainstitute.com/api/`
 
 ---
 
@@ -78,7 +79,7 @@ npm run dev
 ```
 Opens at: `http://localhost:3000`
 
-> The Vite config proxies all `/api/` requests to `http://localhost:8000` automatically.
+> By default, the Vite config proxies `/api/` and `/media/` requests to `https://testiie.indrainstitute.com`. Set `VITE_API_PROXY_TARGET=http://localhost:8000` when you want the dev server to use a local backend.
 
 ---
 

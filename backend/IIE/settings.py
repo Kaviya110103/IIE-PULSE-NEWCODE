@@ -130,6 +130,8 @@ if not ALLOWED_HOSTS:
         '127.0.0.1',
         '0.0.0.0',
         '10.0.2.2',
+        '192.168.1.8',
+        '192.168.1.15',
         DEPLOYMENT_DOMAIN,
     ]
     ALLOWED_HOSTS = dev_hosts if DEBUG else [DEPLOYMENT_DOMAIN]

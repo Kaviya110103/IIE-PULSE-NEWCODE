@@ -1,4 +1,4 @@
-﻿import csv
+import csv
 import io
 import re
 import mimetypes
@@ -6,7 +6,7 @@ from html import escape
 from django.contrib.auth import authenticate
 from django.contrib.auth.hashers import check_password, make_password
 from django.contrib.auth.models import User
-from django.db.models import Q
+from django.db.models import Q, Count
 from django.db import DatabaseError, IntegrityError, OperationalError
 from django.utils import timezone
 from django.utils.dateparse import parse_date
@@ -45,7 +45,7 @@ def get_portal_url(request=None):
         return request.build_absolute_uri('/').rstrip('/')
     return ''
 
-# ── BREVO EMAIL HELPER ───────────────────────────────────────────────────────
+# -- BREVO EMAIL HELPER -------------------------------------------------------
 def send_brevo_email(to_email, subject, html_content, text_content=""):
     api_key = os.getenv('BREVO_API_KEY', getattr(settings, 'BREVO_API_KEY', ''))
     from_email = os.getenv('DEFAULT_FROM_EMAIL', getattr(settings, 'DEFAULT_FROM_EMAIL', ''))
@@ -134,7 +134,7 @@ from .serializers import (
     QuizAttemptSerializer, CompletedStudentSerializer,
     SessionCompletionRequestSerializer, LoginSerializer,
     GalleryItemSerializer, VlogItemSerializer, NewsItemSerializer,
-    CalendarEventSerializer, ReferralSerializer, strip_unsupported_mysql_chars,
+    CalendarEventSerializer, ReferralSerializer, CounselorAnnouncementSerializer, strip_unsupported_mysql_chars,
 )
 
 
@@ -201,6 +201,38 @@ def record_user_logout(user):
 def prepare_activity_monitoring_queryset(qs):
     close_stale_activity_sessions(qs)
     return qs
+
+
+def get_active_students_queryset():
+    qs = Students.objects.all()
+    try:
+        full_completed_ids = CompletedStudent.objects.filter(
+            completion_type='full'
+        ).values_list('original_student_id', flat=True)
+    except DatabaseError:
+        logger.exception("Database error while querying fully completed students")
+        full_completed_ids = []
+
+    student_id_values = []
+    student_pk_values = []
+    for completed_id in full_completed_ids:
+        if not completed_id:
+            continue
+        completed_id = str(completed_id).strip()
+        student_id_values.append(completed_id)
+        if completed_id.isdigit():
+            student_pk_values.append(int(completed_id))
+
+    if not student_id_values and not student_pk_values:
+        return qs
+
+    exclude_filter = Q()
+    if student_id_values:
+        exclude_filter |= Q(student_id__in=student_id_values)
+    if student_pk_values:
+        exclude_filter |= Q(id__in=student_pk_values)
+
+    return qs.exclude(exclude_filter)
 
 
 def apply_activity_date_filters(qs, params):
@@ -320,7 +352,7 @@ def generate_student_id(branch):
     next_number = max_number + 1
     return f"{prefix}-STU{next_number:03d}"
 
-# ── AUTH ─────────────────────────────────────────────────────────────────────
+# -- AUTH ---------------------------------------------------------------------
 
 class LoginView(APIView):
     permission_classes = [AllowAny]
@@ -396,7 +428,7 @@ class LogoutView(APIView):
         return Response({'message': 'Logged out successfully.'})
 
 
-# ── DASHBOARD ─────────────────────────────────────────────────────────────────
+# -- DASHBOARD -----------------------------------------------------------------
 
 class AdminDashboardView(APIView):
     permission_classes = [IsAuthenticated]
@@ -404,9 +436,90 @@ class AdminDashboardView(APIView):
     def get(self, request):
         if not is_admin_user(request.user):
             return Response({'error': 'Admin access required.'}, status=403)
-        completed_ids = CompletedStudent.objects.values_list('original_student_id', flat=True)
+        active_students = get_active_students_queryset()
+        branch_counts = active_students.exclude(
+            branch__isnull=True
+        ).exclude(
+            branch=''
+        ).values('branch').annotate(
+            count=Count('id')
+        ).order_by('branch')
+        batch_branch_counts = Batches.objects.exclude(
+            branch__isnull=True
+        ).exclude(
+            branch=''
+        ).values('branch').annotate(
+            count=Count('id')
+        ).order_by('branch')
+        completed_branch_counts = CompletedStudent.objects.exclude(
+            branch__isnull=True
+        ).exclude(
+            branch=''
+        ).values('branch').annotate(
+            count=Count('id')
+        ).order_by('branch')
+        def canonical_branch(value):
+            value = (value or '').strip()
+            if value == 'kunniyamuthur':
+                return 'kuniyamuthur'
+            return value
+
+        def branch_values(branch):
+            if branch == 'kuniyamuthur':
+                return ['kuniyamuthur', 'kunniyamuthur']
+            return [branch]
+
+        def clamp_percentage(value):
+            return max(0, min(100, round(value)))
+
+        branch_order = ['100ft', 'hopes', 'kuniyamuthur']
+        branch_set = {
+            canonical_branch(branch)
+            for branch in list(Employee.objects.exclude(branch__isnull=True).exclude(branch='').values_list('branch', flat=True)) +
+            list(active_students.exclude(branch__isnull=True).exclude(branch='').values_list('branch', flat=True))
+            if canonical_branch(branch)
+        }
+        branches = sorted(branch_set, key=lambda branch: (branch_order.index(branch) if branch in branch_order else len(branch_order), branch))
+        branch_usage_stats = []
+        for branch in branches:
+            values = branch_values(branch)
+            active_branch_students = active_students.filter(branch__in=values)
+            staff_total = Employee.objects.filter(branch__in=values).count()
+            student_total = active_branch_students.count()
+            staff_logged = UserActivity.objects.filter(
+                user_type='employee',
+                employee__branch__in=values,
+                employee__isnull=False,
+            ).values('employee_id').distinct().count()
+            student_logged = UserActivity.objects.filter(
+                user_type='student',
+                student_id__in=active_branch_students.values_list('id', flat=True),
+                student__isnull=False,
+            ).values('student_id').distinct().count()
+            total_users = staff_total + student_total
+            logged_users = staff_logged + student_logged
+            usage_percentage = clamp_percentage((logged_users / total_users) * 100) if total_users else 0
+            branch_usage_stats.append({
+                'branch': branch,
+                'usage_percentage': usage_percentage,
+                'staff_usage_percentage': clamp_percentage((staff_logged / staff_total) * 100) if staff_total else 0,
+                'student_usage_percentage': clamp_percentage((student_logged / student_total) * 100) if student_total else 0,
+            })
         return Response({
-            'student_count': Students.objects.exclude(student_id__in=completed_ids).count(),
+            'student_count': active_students.count(),
+            'student_branch_counts': [
+                {'branch': item['branch'], 'count': item['count']}
+                for item in branch_counts
+            ],
+            'batch_branch_counts': [
+                {'branch': item['branch'], 'count': item['count']}
+                for item in batch_branch_counts
+            ],
+            'completed_branch_counts': [
+                {'branch': item['branch'], 'count': item['count']}
+                for item in completed_branch_counts
+            ],
+            'branch_usage_stats': branch_usage_stats,
             'employee_count': Employee.objects.count(),
             'mentor_count': Employee.objects.filter(designation__iexact='mentor').count(),
             'course_count': Courses.objects.count(),
@@ -468,20 +581,20 @@ class StudentDashboardView(APIView):
             is_published=True
         ).order_by('-created_at')[:5]
 
-          # ── ADD THIS: Calculate completed sessions count ─────────────
+          # -- ADD THIS: Calculate completed sessions count -------------
         completed_sessions_count = Student_Session_Progress.objects.filter(
             student=student,
             completed=True
         ).count()
-        # ─────────────────────────────────────────────────────────────
+        # -------------------------------------------------------------
 
-        # ── ADD THIS: Calculate total tests and quizzes ──────────────
+        # -- ADD THIS: Calculate total tests and quizzes --------------
         tests_count = TestResult.objects.filter(student=student).count()
         quizzes_count = QuizAttempt.objects.filter(student=student).count()
         materials_count = StudyMaterial.objects.filter(
             batch=student.assigned_batch
         ).count() if student.assigned_batch else 0
-        # ─────────────────────────────────────────────────────────────
+        # -------------------------------------------------------------
 
 
         return Response({
@@ -490,7 +603,7 @@ class StudentDashboardView(APIView):
             'total_classes': total_att,
             'present_classes': present_att,
             'announcements': AnnouncementSerializer(announcements, many=True).data,
-             # ── ADD THESE NEW FIELDS ─────────────────────────────────
+             # -- ADD THESE NEW FIELDS ---------------------------------
             'completed_sessions_count': completed_sessions_count,
             'tests_count': tests_count,
             'quizzes_count': quizzes_count,
@@ -527,7 +640,7 @@ class CounselorDashboardView(APIView):
         })
 
 
-# ── STAFF ID GENERATION ──────────────────────────────────────────────────────
+# -- STAFF ID GENERATION ------------------------------------------------------
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
@@ -537,7 +650,7 @@ def get_next_staff_id(request):
     return Response({'staff_id': generate_staff_id()})
 
 
-# ── BATCH NUMBER GENERATION ──────────────────────────────────────────────────
+# -- BATCH NUMBER GENERATION --------------------------------------------------
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
@@ -553,7 +666,7 @@ def get_next_batch_number(request):
     })
 
 
-# ── STUDENT ID GENERATION ────────────────────────────────────────────────────
+# -- STUDENT ID GENERATION ----------------------------------------------------
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
@@ -566,7 +679,7 @@ def get_next_student_id(request):
     return Response({'student_id': generate_student_id(branch)})
 
 
-# ── COURSES ──────────────────────────────────────────────────────────────────
+# -- COURSES ------------------------------------------------------------------
 
 class CourseListCreateView(generics.ListCreateAPIView):
     queryset = Courses.objects.all().order_by('-created_at')
@@ -745,7 +858,7 @@ class ReferralDetailView(generics.RetrieveDestroyAPIView):
     permission_classes = [IsAdminUser]
 
 
-# ── EMPLOYEES ────────────────────────────────────────────────────────────────
+# -- EMPLOYEES ----------------------------------------------------------------
 
 class EmployeeListView(generics.ListAPIView):
     queryset = Employee.objects.all().order_by('-created_at')
@@ -823,7 +936,7 @@ class EmployeeCreateView(APIView):
                 id_proof=id_proof if id_proof else None,
             )
 
-            # ── Send welcome email with login credentials (async) ─────────────
+            # -- Send welcome email with login credentials (async) -------------
             try:
                 branch_display = {
                     '100ft': '100 Feet Road',
@@ -838,9 +951,9 @@ class EmployeeCreateView(APIView):
 
 Welcome to IIE Pulse! Your account has been created successfully.
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+??????????????????????????????
 YOUR LOGIN CREDENTIALS
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+??????????????????????????????
 
   Portal URL  :  {portal_url}
   Username    :  {email}
@@ -849,7 +962,7 @@ YOUR LOGIN CREDENTIALS
   Role        :  {role.capitalize()}
   Branch      :  {branch_display}
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+??????????????????????????????
 
 Please log in using the above credentials.
 For security, we recommend changing your password after your first login.
@@ -866,7 +979,7 @@ Indra Institute of Education
                 logger.info("Welcome email queued for employee %s", email)
             except Exception as mail_err:
                 logger.warning("Welcome email queueing failed for employee %s: %s", email, mail_err)
-            # ─────────────────────────────────────────────────────────
+            # ---------------------------------------------------------
 
             return Response({
                 'message': f"Employee '{first_name}' added successfully!",
@@ -918,7 +1031,7 @@ class EmployeeProfileView(APIView):
             return Response({'error': 'Not found'}, status=404)
 
 
-# ── BATCHES ──────────────────────────────────────────────────────────────────
+# -- BATCHES ------------------------------------------------------------------
 
 class BatchListCreateView(generics.ListAPIView):
     queryset = Batches.objects.all().order_by('-created_at')
@@ -1062,7 +1175,7 @@ class BatchDetailView(generics.RetrieveUpdateDestroyAPIView):
         batch = self.get_object()
         data = request.data
 
-        # ── Update fields manually ────────────────────────────────────────
+        # -- Update fields manually ----------------------------------------
         if data.get('course_type'):
             batch.course_type = data.get('course_type')
 
@@ -1095,7 +1208,7 @@ class BatchDetailView(generics.RetrieveUpdateDestroyAPIView):
         if data.get('batch_number'):
             batch.batch_number = data.get('batch_number')
 
-        # ── Handle logsheet file ──────────────────────────────────────────
+        # -- Handle logsheet file ------------------------------------------
         if request.FILES.get('course_logsheet'):
             batch.course_logsheet = request.FILES.get('course_logsheet')
 
@@ -1112,7 +1225,7 @@ class BatchDetailView(generics.RetrieveUpdateDestroyAPIView):
         batch.delete()
         return Response({'message': f"Batch '{batch_number}' deleted successfully!"}, status=204)
 
-# ── STUDENTS ─────────────────────────────────────────────────────────────────
+# -- STUDENTS -----------------------------------------------------------------
 class StudentListView(generics.ListAPIView):
     queryset = Students.objects.all().order_by('-created_at')
     serializer_class = StudentSerializer
@@ -1121,7 +1234,7 @@ class StudentListView(generics.ListAPIView):
     def get_queryset(self):
         qs = super().get_queryset()
 
-        # ── Exclude ONLY FULLY COMPLETED students ────────────────────
+        # -- Exclude ONLY FULLY COMPLETED students --------------------
         # Only exclude students who have a CompletedStudent record with completion_type='full'
         try:
             full_completed_ids = CompletedStudent.objects.filter(
@@ -1149,7 +1262,7 @@ class StudentListView(generics.ListAPIView):
             if valid_student_pks:
                 exclude_filter |= Q(id__in=valid_student_pks)
             qs = qs.exclude(exclude_filter)
-        # ─────────────────────────────────────────────────────────────
+        # -------------------------------------------------------------
 
         assigned_staff = self.request.query_params.get('assigned_staff')
         if assigned_staff:
@@ -1260,7 +1373,7 @@ class StudentCreateView(APIView):
                 photo=photo if photo else None,
             )
 
-            # ── Send welcome email with login credentials (async) ─────────────
+            # -- Send welcome email with login credentials (async) -------------
             try:
                 branch_display = {
                     '100ft': '100 Feet Road',
@@ -1275,9 +1388,9 @@ class StudentCreateView(APIView):
 
 Welcome to IIE Pulse! Your student account has been created successfully.
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+??????????????????????????????
 YOUR LOGIN CREDENTIALS
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+??????????????????????????????
 
   Portal URL  :  {portal_url}
   Username    :  {email}
@@ -1286,7 +1399,7 @@ YOUR LOGIN CREDENTIALS
   Course      :  {course_name}
   Branch      :  {branch_display}
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+??????????????????????????????
 
 Please log in using the above credentials.
 For security, we recommend changing your password after your first login.
@@ -1303,7 +1416,7 @@ Indra Institute of Education
                 logger.info("Welcome email queued for student %s", email)
             except Exception as mail_err:
                 logger.warning("Welcome email queueing failed for student %s: %s", email, mail_err)
-            # ─────────────────────────────────────────────────────────
+            # ---------------------------------------------------------
 
             return Response({
                 'message': f"Student '{first_name}' added successfully!",
@@ -1360,8 +1473,8 @@ class StudentProfileView(APIView):
 
 from .models import FeePayment, FeeTransaction
 
-# ── When student is assigned to batch, create fee record ─────────────────────
-# ── When student is assigned to batch, create fee record ─────────────────────
+# -- When student is assigned to batch, create fee record ---------------------
+# -- When student is assigned to batch, create fee record ---------------------
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def assign_staff_to_student(request, student_id):
@@ -1381,7 +1494,7 @@ def assign_staff_to_student(request, student_id):
 
             # If this is a new batch and sessions are not created yet, extract from logsheet
             if not sessions.exists():
-                print(f"⚠️ No sessions found for batch {batch.id}. Trying to extract from logsheet...")
+                print(f"?? No sessions found for batch {batch.id}. Trying to extract from logsheet...")
 
                 extracted_sessions = extract_sessions_from_logsheet(batch, debug=True)
 
@@ -1397,7 +1510,7 @@ def assign_staff_to_student(request, student_id):
                     )
 
                 sessions = CourseSession.objects.filter(batch=batch).order_by("session_number")
-                print(f"✅ Sessions available for batch {batch.id}: {sessions.count()}")
+                print(f"? Sessions available for batch {batch.id}: {sessions.count()}")
 
             Student_Session_Progress.objects.filter(student=student).delete()
             StudentSessionStatus.objects.filter(student=student).delete()
@@ -1417,7 +1530,7 @@ def assign_staff_to_student(request, student_id):
                     student_status="pending"
                 )
 
-            # ── Create fee record ─────────────────────────────────────────
+            # -- Create fee record -----------------------------------------
             course_fee = batch.course_name.fee if batch.course_name and batch.course_name.fee else 0
             if course_fee:
                 FeePayment.objects.get_or_create(
@@ -1430,7 +1543,7 @@ def assign_staff_to_student(request, student_id):
                         'is_fully_paid': False,
                     }
                 )
-            # ─────────────────────────────────────────────────────────────
+            # -------------------------------------------------------------
 
         student.save()
         return Response({'message': 'Assigned successfully.', 'student': StudentSerializer(student).data})
@@ -1451,7 +1564,7 @@ def remove_staff_from_student(request, student_id):
         return Response({'error': 'Not found'}, status=404)
 
 
-# ── ATTENDANCE ────────────────────────────────────────────────────────────────
+# -- ATTENDANCE ----------------------------------------------------------------
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
@@ -1538,7 +1651,7 @@ def batch_attendance_records(request, batch_id):
     return Response(AttendanceSerializer(records, many=True).data)
 
 
-# ── STUDY MATERIALS ───────────────────────────────────────────────────────────
+# -- STUDY MATERIALS -----------------------------------------------------------
 
 def _get_employee_for_request(request):
     try:
@@ -1775,7 +1888,7 @@ def delete_material(request, pk):
         return Response({'error': 'Not found'}, status=404)
 
 
-# ── TESTS ─────────────────────────────────────────────────────────────────────
+# -- TESTS ---------------------------------------------------------------------
 
 class TestListCreateView(generics.ListCreateAPIView):
     serializer_class = TestSerializer
@@ -1866,7 +1979,7 @@ def student_tests(request):
     return Response([])
 
 
-# ── LEAVE ─────────────────────────────────────────────────────────────────────
+# -- LEAVE ---------------------------------------------------------------------
 
 class StaffLeaveListView(generics.ListCreateAPIView):
     queryset = StaffLeaveRequest.objects.all().order_by('-applied_at')
@@ -2016,7 +2129,7 @@ def process_student_leave(request, pk):
         return Response({'error': 'Not found'}, status=404)
 
 
-# ── SUPPORT ───────────────────────────────────────────────────────────────────
+# -- SUPPORT -------------------------------------------------------------------
 
 class StaffSupportListView(generics.ListCreateAPIView):
     queryset = SupportRequest.objects.all().order_by('-created_at')
@@ -2065,7 +2178,7 @@ class CounselorSupportListView(generics.ListCreateAPIView):
         serializer.save(counselor=self.request.user)
 
 
-# ── ANNOUNCEMENTS ─────────────────────────────────────────────────────────────
+# -- ANNOUNCEMENTS -------------------------------------------------------------
 
 
 class AnnouncementListView(generics.ListAPIView):
@@ -2105,6 +2218,107 @@ class AnnouncementCreateView(generics.CreateAPIView):
         serializer.save(created_by=self.request.user)
 
 
+def _admin_announcement_visible_to_student(announcement, student):
+    if announcement.recipient_type == 'all':
+        return True
+    if announcement.recipient_type == 'students':
+        selected = announcement.specific_students.all()
+        return not selected.exists() or selected.filter(id=student.id).exists()
+    if announcement.recipient_type == 'specific':
+        return announcement.specific_students.filter(id=student.id).exists()
+    return False
+
+
+def _serialize_mobile_announcement(item, source, source_label, audience_label=None):
+    data = dict(item)
+    data['id'] = f"{source}-{data.get('id')}"
+    data['source'] = source
+    data['source_label'] = source_label
+    if audience_label:
+        data['audience_label'] = audience_label
+    return data
+
+
+def _counselor_announcement_visible_to_student(announcement, student):
+    if announcement.recipient_type == 'specific_batch':
+        return bool(student.assigned_batch_id and announcement.specific_batch_id == student.assigned_batch_id)
+
+    if announcement.recipient_type == 'specific_student':
+        return announcement.specific_students.filter(id=student.id).exists()
+
+    if announcement.recipient_type not in ['all', 'students']:
+        return False
+
+    student_branch = (student.branch or '').strip().lower()
+    announcement_branch = (announcement.branch or '').strip().lower()
+    if announcement_branch and announcement_branch == student_branch:
+        return True
+
+    creator_emp = Employee.objects.filter(user=announcement.created_by).first()
+    creator_branch = (getattr(creator_emp, 'branch', '') or '').strip().lower()
+    return bool(creator_branch and creator_branch == student_branch)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def student_announcements(request):
+    try:
+        student = Students.objects.select_related(
+            'assigned_batch',
+            'assigned_staff',
+            'assigned_staff__user',
+        ).get(user=request.user)
+    except Students.DoesNotExist:
+        return Response({'error': 'Student profile not found'}, status=404)
+
+    admin_items = []
+    admin_qs = Announcement.objects.prefetch_related('specific_students').filter(
+        is_published=True,
+        created_by__is_staff=True,
+        recipient_type__in=['all', 'students', 'specific'],
+    ).order_by('-created_at')
+    for announcement in admin_qs:
+        if _admin_announcement_visible_to_student(announcement, student):
+            is_selected = announcement.specific_students.filter(id=student.id).exists()
+            admin_items.append(_serialize_mobile_announcement(
+                AnnouncementSerializer(announcement).data,
+                'admin',
+                'Admin',
+                'Selected Student' if is_selected else None,
+            ))
+
+    counselor_qs = CounselorAnnouncement.objects.select_related(
+        'specific_batch',
+        'created_by',
+    ).prefetch_related('specific_students').filter(
+        is_published=True,
+    ).distinct().order_by('-created_at')
+    counselor_items = [
+        _serialize_mobile_announcement(
+            CounselorAnnouncementSerializer(announcement).data,
+            'counselor',
+            'Counselor',
+            announcement.specific_batch.batch_number
+            if announcement.recipient_type == 'specific_batch' and announcement.specific_batch
+            else None,
+        )
+        for announcement in counselor_qs
+        if _counselor_announcement_visible_to_student(announcement, student)
+    ]
+
+    results = sorted(
+        admin_items + counselor_items,
+        key=lambda item: item.get('created_at') or '',
+        reverse=True,
+    )
+    return Response({
+        'results': results,
+        'admin': admin_items,
+        'counselor': counselor_items,
+        'count': len(results),
+    })
+
+
 @api_view(['PATCH'])
 @permission_classes([IsAuthenticated])
 def toggle_announcement(request, pk):
@@ -2127,7 +2341,7 @@ def delete_announcement(request, pk):
         return Response({'error': 'Not found'}, status=404)
 
 
-# ── COUNSELOR LEAVE ───────────────────────────────────────────────────────────
+# -- COUNSELOR LEAVE -----------------------------------------------------------
 
 class CounselorLeaveListView(generics.ListCreateAPIView):
     queryset = CounselorLeaveRequest.objects.all().order_by('-applied_at')
@@ -2162,7 +2376,7 @@ def process_counselor_leave(request, pk):
         return Response({'error': 'Not found'}, status=404)
 
 
-# ── QUIZ ──────────────────────────────────────────────────────────────────────
+# -- QUIZ ----------------------------------------------------------------------
 
 class QuizListView(generics.ListAPIView):
     serializer_class = QuizSerializer
@@ -2201,7 +2415,10 @@ def upload_quiz(request):
     try:
         emp = Employee.objects.get(user=request.user)
     except Employee.DoesNotExist:
-        return Response({'error': 'Employee not found'}, status=404)
+        if request.user.is_superuser or request.user.is_staff:
+            emp = None
+        else:
+            return Response({'error': 'Employee not found'}, status=404)
     
     batch_id = (request.data.get('batch') or request.data.get('batch_id') or '').strip()
     batch = None
@@ -2540,24 +2757,47 @@ def submit_practice_quiz(request, quiz_id):
 
     percentage = round((score / total_marks) * 100, 1) if total_marks else 0
     wrong_count = attempted_count - correct_count
+    request_user = request.user if getattr(request, 'user', None) and request.user.is_authenticated else None
     username = str(request.data.get('username', '')).strip().lower()
-    public_user = PublicUser.objects.filter(Q(username__iexact=username) | Q(email__iexact=username)).first() if username else None
-    if username:
-        PublicPracticeResult.objects.create(
-            public_user=public_user,
-            username=username,
-            quiz_id=quiz.id,
-            quiz_title=quiz.title,
-            score=score,
-            total_marks=total_marks,
-            percentage=percentage,
-            is_passed=percentage >= quiz.passing_marks,
-            correct_count=correct_count,
-            wrong_count=wrong_count,
-            attempted_count=attempted_count,
-            total_questions=questions.count(),
-            completed_at=timezone.now(),
-        )
+    name = str(request.data.get('name', '')).strip()
+    email = str(request.data.get('email', '')).strip().lower()
+    mobile = str(request.data.get('mobile', '')).strip()
+
+    if not username and request_user:
+        username = request_user.username
+
+    public_lookup = Q()
+    for value in [username, email, mobile]:
+        if value:
+            public_lookup |= Q(username__iexact=value) | Q(email__iexact=value) | Q(mobile__iexact=value)
+    public_user = PublicUser.objects.filter(public_lookup).first() if public_lookup else None
+
+    if not username and public_user:
+        username = public_user.username
+    if not username and email:
+        username = email
+    if not username and mobile:
+        username = mobile
+    if not username and name:
+        username = name.lower().replace(' ', '-')
+    if not username:
+        username = f"guest-{timezone.now().strftime('%Y%m%d%H%M%S%f')}"
+
+    PublicPracticeResult.objects.create(
+        public_user=public_user,
+        username=username[:120],
+        quiz_id=quiz.id,
+        quiz_title=quiz.title,
+        score=score,
+        total_marks=total_marks,
+        percentage=percentage,
+        is_passed=percentage >= quiz.passing_marks,
+        correct_count=correct_count,
+        wrong_count=wrong_count,
+        attempted_count=attempted_count,
+        total_questions=questions.count(),
+        completed_at=timezone.now(),
+    )
 
     return Response({
         'score': score,
@@ -2584,6 +2824,8 @@ def admin_public_users(request):
         return Response({'results': [{
             'id': result.id,
             'name': result.public_user.name if result.public_user else '',
+            'email': result.public_user.email if result.public_user else '',
+            'mobile': result.public_user.mobile if result.public_user else '',
             'username': result.username,
             'quiz_title': result.quiz_title,
             'score': result.score,
@@ -2615,36 +2857,139 @@ def admin_public_users(request):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def staff_quiz_results(request):
-    try:
-        emp = Employee.objects.get(user=request.user)
-        batches = Batches.objects.filter(faculty=emp)
-        attempts = QuizAttempt.objects.filter(
-            quiz__batch__in=batches, 
-            is_completed=True
-        ).select_related('student', 'quiz').order_by('-submitted_at')
-        
-        data = []
-        for attempt in attempts:
-            data.append({
-                'id': attempt.id,
-                'student_name': f"{attempt.student.first_name} {attempt.student.last_name or ''}",
-                'student_id': attempt.student.student_id,
-                'quiz_title': attempt.quiz.title,
-                'score': attempt.score,
-                'total_marks': attempt.quiz.total_marks,
-                'percentage': attempt.percentage,
-                'passing_marks': attempt.quiz.passing_marks,
-                'submitted_at': attempt.submitted_at,
-                'batch_id': attempt.quiz.batch.id if attempt.quiz.batch else None,
-                'batch_number': attempt.quiz.batch.batch_number if attempt.quiz.batch else None,
+    attempts = QuizAttempt.objects.filter(is_completed=True, quiz__batch__isnull=False)
+    include_public_results = is_admin_user(request.user) or request.user.is_superuser or request.user.is_staff
+
+    if include_public_results:
+        attempts = attempts
+    else:
+        try:
+            emp = Employee.objects.get(user=request.user)
+            batches = Batches.objects.filter(faculty=emp)
+            attempts = attempts.filter(quiz__batch__in=batches)
+        except Employee.DoesNotExist:
+            return Response({'results': []})
+
+    batch_id = request.query_params.get('batch_id') or request.query_params.get('batch')
+    if batch_id:
+        attempts = attempts.filter(quiz__batch_id=batch_id)
+
+    attempts = attempts.select_related('student', 'quiz', 'quiz__batch').order_by('-submitted_at')
+
+    data = []
+    for attempt in attempts:
+        batch = attempt.quiz.batch
+        data.append({
+            'id': attempt.id,
+            'student_name': f"{attempt.student.first_name} {attempt.student.last_name or ''}".strip(),
+            'student_id': attempt.student.student_id,
+            'quiz_title': attempt.quiz.title,
+            'score': attempt.score,
+            'total_marks': attempt.quiz.total_marks,
+            'total_questions': attempt.total_questions or attempt.quiz.total_questions,
+            'percentage': attempt.percentage,
+            'passing_marks': attempt.quiz.passing_marks,
+            'is_passed': attempt.is_passed,
+            'submitted_at': attempt.submitted_at,
+            'batch_id': batch.id if batch else None,
+            'batch_number': batch.batch_number if batch else None,
+        })
+
+    public_data = []
+
+    if include_public_results and not batch_id:
+        public_results = PublicPracticeResult.objects.select_related('public_user').order_by('-completed_at')
+        quiz_ids = [result.quiz_id for result in public_results if result.quiz_id]
+        quiz_map = {quiz.id: quiz for quiz in Quiz.objects.filter(id__in=quiz_ids)}
+        result_usernames = [result.username for result in public_results if result.username]
+        student_map = {}
+        employee_map = {}
+        if result_usernames:
+            students = Students.objects.select_related('user').filter(
+                Q(student_id__in=result_usernames) |
+                Q(email__in=result_usernames) |
+                Q(user__username__in=result_usernames)
+            )
+            student_map = {
+                key.lower(): student
+                for student in students
+                for key in [student.student_id, student.email, student.user.username if student.user else '']
+                if key
+            }
+            employees = Employee.objects.select_related('user').filter(
+                Q(email__in=result_usernames) |
+                Q(user__username__in=result_usernames)
+            )
+            employee_map = {
+                key.lower(): employee
+                for employee in employees
+                for key in [employee.email, employee.user.username if employee.user else '']
+                if key
+            }
+
+        for result in public_results:
+            quiz = quiz_map.get(result.quiz_id)
+            public_user = result.public_user
+            lookup_key = (result.username or '').lower()
+            matched_student = student_map.get(lookup_key)
+            matched_employee = employee_map.get(lookup_key)
+            if matched_student:
+                student_name = f"{matched_student.first_name} {matched_student.last_name or ''}".strip()
+                student_id = matched_student.student_id
+                audience = 'student'
+                contact_email = matched_student.email or ''
+                contact_mobile = matched_student.mobile_no or ''
+            elif matched_employee:
+                student_name = f"{matched_employee.first_name} {matched_employee.last_name or ''}".strip()
+                student_id = matched_employee.staff_id or result.username
+                audience = 'employee'
+                contact_email = matched_employee.email or ''
+                contact_mobile = matched_employee.mobile_no or ''
+            elif public_user:
+                student_name = public_user.name or result.username
+                student_id = public_user.username
+                audience = 'public'
+                contact_email = public_user.email or ''
+                contact_mobile = public_user.mobile or ''
+            else:
+                student_name = result.username
+                student_id = result.username
+                audience = 'public'
+                contact_email = ''
+                contact_mobile = ''
+            public_data.append({
+                'id': f'public-{result.id}',
+                'source': 'public',
+                'audience': audience,
+                'name': public_user.name if public_user else student_name,
+                'email': contact_email,
+                'mobile': contact_mobile,
+                'username': result.username,
+                'student_name': student_name,
+                'student_id': student_id,
+                'quiz_title': result.quiz_title,
+                'score': result.score,
+                'total_marks': result.total_marks,
+                'total_questions': result.total_questions,
+                'percentage': result.percentage,
+                'passing_marks': quiz.passing_marks if quiz else 50,
+                'is_passed': result.is_passed,
+                'submitted_at': result.completed_at,
+                'batch_id': None,
+                'batch_number': 'Practice Test',
             })
-        return Response({'results': data})
-    except Employee.DoesNotExist:
-        return Response({'results': []})
+
+        oldest_date = timezone.make_aware(datetime.min)
+        public_data.sort(key=lambda item: item.get('submitted_at') or oldest_date, reverse=True)
+    return Response({
+        'results': data,
+        'student_results': data,
+        'public_results': public_data,
+    })
         
-# ══════════════════════════════════════════════════════════════════════════════
+# ------------------------------------------------------------------------------
 # SESSIONS (UPDATED WORKING VERSION)
-# ══════════════════════════════════════════════════════════════════════════════
+# ------------------------------------------------------------------------------
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
@@ -2870,7 +3215,7 @@ def student_mark_completed(request):
         total_sessions = CourseSession.objects.filter(batch=student.assigned_batch).count()
         completed_sessions = Student_Session_Progress.objects.filter(
             student=student,
-            session__batch=student.assigned_batch,  # ← only current batch
+            session__batch=student.assigned_batch,  # ? only current batch
             completed=True
         ).count()
 
@@ -2975,7 +3320,7 @@ def staff_reply_doubt(request, progress_id):
             message=reply_text
         )
         
-        print(f"✅ Doubt response saved with ID: {doubt_response.id}")
+        print(f"? Doubt response saved with ID: {doubt_response.id}")
 
         # CRITICAL: Update progress - mark doubt as resolved
         progress.doubt_resolved = True
@@ -2983,7 +3328,7 @@ def staff_reply_doubt(request, progress_id):
         # IMPORTANT: Change status to 'pending' so student sees the response
         # DO NOT set completed = True
         # DO NOT set student_status = 'completed'
-        progress.student_status = 'pending'  # ← This should be 'pending', NOT 'completed'
+        progress.student_status = 'pending'  # ? This should be 'pending', NOT 'completed'
         progress.save()
 
         # Update StudentSessionStatus
@@ -2991,7 +3336,7 @@ def staff_reply_doubt(request, progress_id):
             student=progress.student, 
             session=progress.session
         )
-        status_obj.student_status = 'pending'  # ← This should be 'pending'
+        status_obj.student_status = 'pending'  # ? This should be 'pending'
         status_obj.save()
 
         # Send notification to student
@@ -3006,7 +3351,7 @@ def staff_reply_doubt(request, progress_id):
                 requires_action=True,
                 is_read=False
             )
-            print(f"✅ Notification sent to student: {notification.id}")
+            print(f"? Notification sent to student: {notification.id}")
 
         return Response({
             'success': True, 
@@ -3088,7 +3433,7 @@ def mark_notification_read(request, notif_id):
         return Response({'error': 'Not found'}, status=404)
 
 
-# ── COMPLETED STUDENTS ────────────────────────────────────────────────────────
+# -- COMPLETED STUDENTS --------------------------------------------------------
 
 class CompletedStudentListView(generics.ListAPIView):
     queryset = CompletedStudent.objects.all().order_by('-completion_date')
@@ -3130,7 +3475,7 @@ class CompletedStudentListView(generics.ListAPIView):
             }, status=500)
 
 
-# ── COMPLETION REQUESTS ───────────────────────────────────────────────────────
+# -- COMPLETION REQUESTS -------------------------------------------------------
 
 def _completed_student_defaults(student, trainer, completed_sessions, total_sessions):
     att_total = StudentAttendance.objects.filter(student=student).count()
@@ -3171,6 +3516,73 @@ def _completed_student_defaults(student, trainer, completed_sessions, total_sess
         'completion_type': 'full',
         'completion_percentage': 100,
     }
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def mark_student_completed_by_admin_or_counselor(request, student_id):
+    try:
+        student = Students.objects.select_related('assigned_batch', 'assigned_staff').get(id=student_id)
+    except Students.DoesNotExist:
+        return Response({'error': 'Student not found'}, status=404)
+
+    actor_employee = Employee.objects.filter(user=request.user).first()
+    is_admin = is_admin_user(request.user) or request.user.is_staff or request.user.is_superuser
+    is_counselor = bool(actor_employee and (actor_employee.designation or '').strip().lower() == 'counselor')
+
+    if not is_admin and not is_counselor:
+        return Response({'error': 'Only admin or counselor can mark students completed.'}, status=403)
+
+    if is_counselor and not is_admin:
+        student_branch = (student.branch or '').strip().lower()
+        counselor_branch = (actor_employee.branch or '').strip().lower()
+        if student_branch != counselor_branch:
+            return Response({'error': 'You can only complete students from your branch.'}, status=403)
+
+    already_completed = CompletedStudent.objects.filter(completion_type='full').filter(
+        Q(original_student_id=str(student.id)) | Q(original_student_id=student.student_id)
+    ).first()
+    if already_completed:
+        return Response({
+            'success': True,
+            'message': 'Student is already completed.',
+            'completed_student_id': already_completed.id,
+        })
+
+    total_sessions = CourseSession.objects.filter(batch=student.assigned_batch).count() if student.assigned_batch_id else 0
+    completed_sessions = Student_Session_Progress.objects.filter(
+        student=student,
+        completed=True,
+        student_status='completed',
+    ).count()
+    trainer = student.assigned_staff or actor_employee
+    defaults = _completed_student_defaults(student, trainer, completed_sessions, total_sessions)
+
+    with transaction.atomic():
+        completed_student, _ = CompletedStudent.objects.get_or_create(
+            original_student_id=str(student.id),
+            defaults=defaults,
+        )
+        for key, value in defaults.items():
+            setattr(completed_student, key, value)
+        completed_student.graduated_from_trainer = student.assigned_staff
+        completed_student.save()
+
+        old_batch = student.assigned_batch
+        student.assigned_batch = None
+        student.assigned_staff = None
+        student.save()
+
+        Student_Session_Progress.objects.filter(student=student).delete()
+        StudentSessionStatus.objects.filter(student=student).delete()
+        DoubtResponse.objects.filter(doubt__student=student).delete()
+
+    return Response({
+        'success': True,
+        'message': f'{student.first_name} moved to completed students.',
+        'completed_student_id': completed_student.id,
+        'previous_batch': old_batch.batch_number if old_batch else None,
+    })
 
 
 @api_view(['POST'])
@@ -3606,7 +4018,7 @@ def quiz_staff_results_view(request):
         return Response([])
 
 
-# ── ADMIN: BRANCH-WISE ATTENDANCE OVERVIEW ────────────────────────────────────
+# -- ADMIN: BRANCH-WISE ATTENDANCE OVERVIEW ------------------------------------
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
@@ -3799,25 +4211,25 @@ def admin_branch_attendance(request):
 
             student_details = []
             for student in students:
-                # ── Attendance ────────────────────────────────────────────
+                # -- Attendance --------------------------------------------
                 att_qs = list(StudentAttendance.objects.filter(student=student).select_related('batch', 'staff').order_by('-date')[:50])
                 total_att = len(att_qs)
                 present_att = len([a for a in att_qs if a.status == 'Present'])
                 att_pct = round((present_att / total_att * 100) if total_att > 0 else 0, 1)
 
-                # ── Leave ─────────────────────────────────────────────────
+                # -- Leave -------------------------------------------------
                 leave_qs = list(StudentLeaveApplication.objects.filter(student=student).order_by('-applied_at'))
 
-                # ── Support ───────────────────────────────────────────────
+                # -- Support -----------------------------------------------
                 support_qs = list(StudentSupportRequest.objects.filter(student=student.user).order_by('-created_at'))
 
-                # ── Test Results ──────────────────────────────────────────
+                # -- Test Results ------------------------------------------
                 test_qs = list(TestResult.objects.filter(student=student).select_related('test').order_by('-submitted_at'))
 
-                # ── Quiz Results ──────────────────────────────────────────
+                # -- Quiz Results ------------------------------------------
                 quiz_qs = list(QuizAttempt.objects.filter(student=student).select_related('quiz').order_by('-submitted_at'))
 
-                # ── Session Progress ──────────────────────────────────────
+                # -- Session Progress --------------------------------------
                 progress_qs = Student_Session_Progress.objects.filter(student=student)
                 total_sessions = progress_qs.count()
                 sessions_completed = progress_qs.filter(completed=True).count()
@@ -3826,7 +4238,7 @@ def admin_branch_attendance(request):
                 resolved_doubts = progress_qs.filter(doubt_resolved=True).count()
                 last_progress = progress_qs.filter(completed=True).order_by('-completed_date').first()
                 last_activity = last_progress.completed_date if last_progress else None
-                # ─────────────────────────────────────────────────────────
+                # ---------------------------------------------------------
 
                 student_details.append({
                     'student': StudentSerializer(student).data,
@@ -3862,14 +4274,14 @@ def admin_branch_attendance(request):
                         'created_at': str(s.created_at)[:10] if s.created_at else ''
                     } for s in support_qs],
                     'support_count': len(support_qs),
-                    # ── Session progress fields ───────────────────────────
+                    # -- Session progress fields ---------------------------
                     'sessions_completed': sessions_completed,
                     'total_sessions': total_sessions,
                     'progress_percentage': progress_pct,
                     'doubts_count': doubts_count,
                     'resolved_doubts': resolved_doubts,
                     'last_activity': last_activity,
-                    # ── Quiz Results ──────────────────────────────────────
+                    # -- Quiz Results --------------------------------------
                     'quiz_results': [{
                         'quiz_title': a.quiz.title if a.quiz else '—',
                         'score': a.score or 0,
@@ -3904,7 +4316,7 @@ def admin_branch_attendance(request):
 
     return Response({'view_mode': 'branches', 'branches': branches, 'branch_stats': branch_stats})
 
-# ── ADMIN: STUDY MATERIALS OVERVIEW ──────────────────────────────────────────
+# -- ADMIN: STUDY MATERIALS OVERVIEW ------------------------------------------
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
@@ -3914,7 +4326,7 @@ def admin_materials_overview(request):
     branches = list(Employee.objects.values_list('branch', flat=True).distinct())
 
     if branch and staff_id:
-        # ── LEVEL 3: Materials for a specific staff member ──
+        # -- LEVEL 3: Materials for a specific staff member --
         try:
             staff = Employee.objects.get(id=staff_id, branch=branch)
         except Employee.DoesNotExist:
@@ -3942,7 +4354,7 @@ def admin_materials_overview(request):
         })
 
     if branch:
-        # ── LEVEL 2: Staff list for a branch ──
+        # -- LEVEL 2: Staff list for a branch --
         staff_members = Employee.objects.filter(
             branch=branch,
             designation__in=['mentor', 'trainer']
@@ -3968,7 +4380,7 @@ def admin_materials_overview(request):
             'materials': [],
         })
 
-    # ── LEVEL 1: Branch list ──
+    # -- LEVEL 1: Branch list --
     return Response({
         'branches': branches,
         'selected_branch': None,
@@ -3976,7 +4388,7 @@ def admin_materials_overview(request):
         'materials': [],
     })
 
-# ── ADMIN: SUPPORT REQUESTS OVERVIEW ─────────────────────────────────────────
+# -- ADMIN: SUPPORT REQUESTS OVERVIEW -----------------------------------------
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
@@ -4028,7 +4440,7 @@ def update_support_status(request, pk):
         return Response({'error': str(e)}, status=404)
 
 
-# ── ADMIN: SEPARATE SUPPORT ENDPOINTS ────────────────────────────────────────
+# -- ADMIN: SEPARATE SUPPORT ENDPOINTS ----------------------------------------
 
 class AdminStaffSupportListView(APIView):
     permission_classes = [IsAuthenticated]
@@ -4205,7 +4617,7 @@ class AdminStudentSupportHistoryView(APIView):
         return Response({'results': data})
 
 
-# ── ADMIN LEAVE MANAGEMENT ────────────────────────────────────────────────────
+# -- ADMIN LEAVE MANAGEMENT ----------------------------------------------------
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
@@ -4296,7 +4708,7 @@ def admin_process_counselor_leave(request, pk):
         return Response({'error': 'Not found'}, status=404)
 
 
-# ── PDF EXTRACTION ───────────────────────────────────────────────────────────
+# -- PDF EXTRACTION -----------------------------------------------------------
 
 def extract_pdf_text(logsheet_path):
     """
@@ -4707,9 +5119,9 @@ def extract_and_store_sessions(request, batch_id):
             print(f"[SESSION_EXTRACT] Created progress for {student.first_name} ({student.student_id})")
         
         print(f"\n[SESSION_EXTRACT] COMPLETE:")
-        print(f"  ✅ Total sessions created: {len(new_sessions)}")
-        print(f"  ✅ Active students: {students.count()}")
-        print(f"  ✅ Progress records: {created_progress}")
+        print(f"  ? Total sessions created: {len(new_sessions)}")
+        print(f"  ? Active students: {students.count()}")
+        print(f"  ? Progress records: {created_progress}")
         print(f"{'='*60}\n")
         
         return Response({
@@ -4729,7 +5141,7 @@ def extract_and_store_sessions(request, batch_id):
         traceback.print_exc()
         return Response({'error': str(e)}, status=500)
 
-# ── ADMIN: MENTORS LIST ───────────────────────────────────────────────────────
+# -- ADMIN: MENTORS LIST -------------------------------------------------------
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
@@ -4744,7 +5156,7 @@ def admin_view_mentors(request):
     return Response(EmployeeSerializer(qs, many=True).data)
 
 
-# ── STAFF STUDENT LEAVE MANAGEMENT ───────────────────────────────────────────
+# -- STAFF STUDENT LEAVE MANAGEMENT -------------------------------------------
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
@@ -4816,12 +5228,8 @@ def student_quizzes(request):
         if not student.assigned_batch:
             return Response({'results': []})
         
-        quiz_filter = Q(batch=student.assigned_batch)
-        if student.assigned_staff_id:
-            quiz_filter |= Q(created_by=student.assigned_staff)
-
         quizzes = Quiz.objects.filter(
-            quiz_filter,
+            batch=student.assigned_batch,
             is_published=True
         ).distinct().order_by('-created_at')
         
@@ -4876,9 +5284,8 @@ def student_take_quiz(request, quiz_id):
         quiz = Quiz.objects.get(id=quiz_id, is_published=True)
         
         assigned_to_batch = bool(student.assigned_batch and quiz.batch_id == student.assigned_batch_id)
-        mentor_owned_quiz = bool(student.assigned_staff_id and quiz.created_by_id == student.assigned_staff_id)
 
-        if not assigned_to_batch and not mentor_owned_quiz:
+        if not assigned_to_batch:
             return Response({'error': 'This quiz is not assigned to your batch'}, status=400)
         
         # Check attempt limit
@@ -5123,7 +5530,7 @@ def student_test_results(request):
     except Students.DoesNotExist:
         return Response({'results': []})
 
-    # ── Only results for THIS student ──
+    # -- Only results for THIS student --
     results = TestResult.objects.filter(
         student=student
     ).select_related('test').order_by('-submitted_at')
@@ -5165,7 +5572,7 @@ def student_take_test(request, test_id):
         if not assigned_exists and not mentor_owned_test:
             return Response({'error': 'This test is not assigned to your batch'}, status=400)
         
-        # ✅ ONE TIME ATTEMPT - Check if already taken
+        # ? ONE TIME ATTEMPT - Check if already taken
         if TestResult.objects.filter(student=student, test=test).exists():
             return Response({'error': 'You have already taken this test. Only one attempt allowed.'}, status=400)
         
@@ -5340,7 +5747,7 @@ def test_results(request):
 
     batch_id = request.query_params.get('batch_id')
 
-    # ── Only show results for students assigned to THIS staff ──
+    # -- Only show results for students assigned to THIS staff --
     results = TestResult.objects.select_related(
         'student', 'test', 'student__assigned_batch'
     ).filter(
@@ -5536,7 +5943,7 @@ def download_completion_report(request, student_id):
     except Exception as e:
         return Response({'error': str(e)}, status=500)
 
-    # ── Filename: StudentName_CourseName_Completion_Report.pdf ──────────────
+    # -- Filename: StudentName_CourseName_Completion_Report.pdf --------------
     BLANK = '\u2014'
 
     def display(value):
@@ -5554,7 +5961,7 @@ def download_completion_report(request, student_id):
     print(f"[COMPLETION_REPORT] completed_student_id={student_id}")
     print(f"[COMPLETION_REPORT] student_name={student_name}")
 
-    # ── Colours ──────────────────────────────────────────────────────────────
+    # -- Colours --------------------------------------------------------------
     NAVY  = colors.HexColor('#0f1b2d')
     AMBER = colors.HexColor('#f4a940')
     TEAL  = colors.HexColor('#2ec4b6')
@@ -5563,7 +5970,7 @@ def download_completion_report(request, student_id):
     LIGHT = colors.HexColor('#f8fafc')
     WHITE = colors.white
 
-    # ── Document ─────────────────────────────────────────────────────────────
+    # -- Document -------------------------------------------------------------
     buf = BytesIO()
     doc = SimpleDocTemplate(
         buf, pagesize=A4,
@@ -5572,7 +5979,7 @@ def download_completion_report(request, student_id):
     )
     W = A4[0] - 40*mm
 
-    # ── Styles ───────────────────────────────────────────────────────────────
+    # -- Styles ---------------------------------------------------------------
     title_style    = ParagraphStyle('T',  fontName='Helvetica-Bold',    fontSize=22, textColor=WHITE, alignment=TA_CENTER)
     subtitle_style = ParagraphStyle('S',  fontName='Helvetica',         fontSize=11, textColor=colors.HexColor('#fcd17a'), alignment=TA_CENTER)
     section_style  = ParagraphStyle('Se', fontName='Helvetica-Bold',    fontSize=11, textColor=NAVY, spaceAfter=6, spaceBefore=4)
@@ -5600,7 +6007,7 @@ def download_completion_report(request, student_id):
 
     story = []
 
-    # ── Header banner ────────────────────────────────────────────────────────
+    # -- Header banner --------------------------------------------------------
     ht = Table(
         [[Paragraph('IIE CONNECT', title_style),
           Paragraph('Certificate of Course Completion', subtitle_style)]],
@@ -5617,7 +6024,7 @@ def download_completion_report(request, student_id):
     story.append(ht)
     story.append(Spacer(1, 10))
 
-    # ── Congratulations strip ────────────────────────────────────────────────
+    # -- Congratulations strip ------------------------------------------------
     ct = Table([[Paragraph(f'Congratulations, {student_name}!', congrats_style)]], colWidths=[W])
     ct.setStyle(TableStyle([
         ('BACKGROUND',    (0,0), (-1,-1), colors.HexColor('#e8f8f0')),
@@ -5631,7 +6038,7 @@ def download_completion_report(request, student_id):
               Paragraph('This report confirms successful completion of the course programme.', note_style),
               Spacer(1, 12)]
 
-    # ── Student Information ──────────────────────────────────────────────────
+    # -- Student Information --------------------------------------------------
     story.append(Paragraph('Student Information', section_style))
     story.append(HRFlowable(width=W, thickness=2, color=AMBER, spaceAfter=6))
     story.append(make_table([
@@ -5647,7 +6054,7 @@ def download_completion_report(request, student_id):
     ]))
     story.append(Spacer(1, 14))
 
-    # ── Course & Batch Details ───────────────────────────────────────────────
+    # -- Course & Batch Details -----------------------------------------------
     c_sess = s.completed_sessions_count or 0
     t_sess = s.total_sessions_count or 0
     sess_text = f"{c_sess} / {t_sess}" + (f"  ({round(c_sess/t_sess*100)}%)" if t_sess else '')
@@ -5674,14 +6081,14 @@ def download_completion_report(request, student_id):
     ]))
     story.append(Spacer(1, 18))
 
-    # ── Footer ───────────────────────────────────────────────────────────────
+    # -- Footer ---------------------------------------------------------------
     story.append(HRFlowable(width=W, thickness=1, color=SLATE, spaceAfter=6))
     story.append(Paragraph(
         'This is an auto-generated report from IIE Pulse. For queries contact administration.',
         footer_style
     ))
 
-    # ── Build & return ───────────────────────────────────────────────────────
+    # -- Build & return -------------------------------------------------------
     doc.build(story)
     buf.seek(0)
 
@@ -5821,7 +6228,7 @@ def reset_password(request):
 
 
 
-# ── Fee Management Views ──────────────────────────────────────────────────────
+# -- Fee Management Views ------------------------------------------------------
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
@@ -5903,7 +6310,7 @@ def add_fee_payment(request, fee_id):
         user = request.user
         fee = FeePayment.objects.get(id=fee_id)
 
-        # ── Allow admin and counselor ─────────────────────────────
+        # -- Allow admin and counselor -----------------------------
         if not (user.is_superuser or user.is_staff):
             try:
                 emp = Employee.objects.get(user=user)
@@ -5913,7 +6320,7 @@ def add_fee_payment(request, fee_id):
                     return Response({'error': 'Access denied — different branch'}, status=403)
             except Employee.DoesNotExist:
                 return Response({'error': 'Access denied'}, status=403)
-        # ─────────────────────────────────────────────────────────
+        # ---------------------------------------------------------
 
         amount = float(request.data.get('amount', 0))
         payment_mode = request.data.get('payment_mode', 'cash')
@@ -5922,7 +6329,7 @@ def add_fee_payment(request, fee_id):
         if amount <= 0:
             return Response({'error': 'Amount must be greater than 0'}, status=400)
         if amount > float(fee.balance):
-            return Response({'error': f'Amount exceeds balance of ₹{fee.balance}'}, status=400)
+            return Response({'error': f'Amount exceeds balance of ?{fee.balance}'}, status=400)
 
         from decimal import Decimal
         transaction = FeeTransaction.objects.create(
@@ -5941,7 +6348,7 @@ def add_fee_payment(request, fee_id):
 
         return Response({
             'success': True,
-            'message': f'Payment of ₹{amount} recorded successfully!',
+            'message': f'Payment of ?{amount} recorded successfully!',
             'balance': float(fee.balance),
             'is_fully_paid': fee.is_fully_paid,
         })
@@ -5983,8 +6390,8 @@ def generate_bill(request, fee_id):
         from django.http import HttpResponse
         from io import BytesIO
 
-        # ── Access control ────────────────────────────────────────
-        # ── Access control ────────────────────────────────────────
+        # -- Access control ----------------------------------------
+        # -- Access control ----------------------------------------
         user = request.user
         if user.is_superuser or user.is_staff:
             fee = FeePayment.objects.select_related('student', 'batch').get(id=fee_id)
@@ -6006,7 +6413,7 @@ def generate_bill(request, fee_id):
 
         transactions = FeeTransaction.objects.filter(fee_payment=fee).order_by('paid_at')
 
-        # ── Colors ────────────────────────────────────────────────
+        # -- Colors ------------------------------------------------
         NAVY   = colors.HexColor('#1a237e')
         BLACK  = colors.black
         GRAY   = colors.HexColor('#555555')
@@ -6020,7 +6427,7 @@ def generate_bill(request, fee_id):
             topMargin=10*mm, bottomMargin=12*mm)
         W = A4[0] - 30*mm
 
-        # ── Styles ────────────────────────────────────────────────
+        # -- Styles ------------------------------------------------
         inst_name_s = ParagraphStyle('IN', fontName=BOLD_FONT, fontSize=18, textColor=NAVY, alignment=TA_CENTER, spaceAfter=6)
         inst_addr_s = ParagraphStyle('IA', fontName=MAIN_FONT, fontSize=9, textColor=GRAY, alignment=TA_CENTER, leading=16, spaceAfter=4)
         label_s     = ParagraphStyle('L',  fontName=BOLD_FONT, fontSize=9.5, textColor=BLACK)
@@ -6030,14 +6437,14 @@ def generate_bill(request, fee_id):
 
         story = []
 
-        # ── Receipt & Date info ───────────────────────────────────
+        # -- Receipt & Date info -----------------------------------
         receipt_no      = f"IIE{fee.student.branch.upper()[:3]}{fee.id:04d}"
         date_str        = fee.updated_at.strftime('%Y-%m-%d')
         received_amount = float(transactions.last().amount) if transactions.exists() else float(fee.amount_paid)
         already_paid    = float(fee.amount_paid) - received_amount
 
-        # ── Logo ──────────────────────────────────────────────────
-        # ── Logo ──────────────────────────────────────────────────
+        # -- Logo --------------------------------------------------
+        # -- Logo --------------------------------------------------
         from django.conf import settings
 
         logo_path = None
@@ -6055,15 +6462,15 @@ def generate_bill(request, fee_id):
 
         for p in possible_paths:
             p = os.path.normpath(p)
-            print(f"Checking: {p} → {os.path.exists(p)}")
+            print(f"Checking: {p} ? {os.path.exists(p)}")
             if os.path.exists(p):
                 logo_path = p
                 break
 
         logo_cell = RLImage(logo_path, width=28*mm, height=28*mm) if logo_path else Paragraph('<b>IIE</b>', label_s)
-        # ══════════════════════════════════════════════════════════
+        # ----------------------------------------------------------
         # HEADER — Logo left, Institution center
-        # ══════════════════════════════════════════════════════════
+        # ----------------------------------------------------------
         inst_table = Table([
         [Paragraph('INDRA INSTITUTE OF EDUCATION', inst_name_s)],
         [Paragraph('65/1, Tatabad, 7th Street, Dr Rajendra Prasad Rd, near BEA,\nGandhipuram, Coimbatore - 641012', inst_addr_s)],
@@ -6086,9 +6493,9 @@ def generate_bill(request, fee_id):
         ]))
         story += [header_t, Spacer(1, 16)]
 
-        # ══════════════════════════════════════════════════════════
+        # ----------------------------------------------------------
         # MAIN DETAILS TABLE
-        # ══════════════════════════════════════════════════════════
+        # ----------------------------------------------------------
         LW = W * 0.20   # label col
         VW = W * 0.30   # value col
 
@@ -6096,7 +6503,7 @@ def generate_bill(request, fee_id):
         def val(text): return Paragraph(str(text) if text else '—', value_s)
 
         # Calculate installments
-        # ── Calculate installment rows ────────────────────────────
+        # -- Calculate installment rows ----------------------------
         total = float(fee.total_fee)
         num_transactions = transactions.count()
 
@@ -6148,18 +6555,18 @@ def generate_bill(request, fee_id):
         details_t.setStyle(TableStyle([
         ('BOX',           (0,0), (-1,-1), 1, BORDER),
         ('LINEBELOW',     (0,0), (-1,-1), 0.3, BORDER),
-        ('TOPPADDING',    (0,0), (-1,-1), 12),      # ← increased from 7
-        ('BOTTOMPADDING', (0,0), (-1,-1), 12),      # ← increased from 7
-        ('LEFTPADDING',   (0,0), (-1,-1), 12),      # ← increased from 8
-        ('RIGHTPADDING',  (0,0), (-1,-1), 12),      # ← increased from 8
+        ('TOPPADDING',    (0,0), (-1,-1), 12),      # ? increased from 7
+        ('BOTTOMPADDING', (0,0), (-1,-1), 12),      # ? increased from 7
+        ('LEFTPADDING',   (0,0), (-1,-1), 12),      # ? increased from 8
+        ('RIGHTPADDING',  (0,0), (-1,-1), 12),      # ? increased from 8
         ('VALIGN',        (0,0), (-1,-1), 'TOP'),
         ('ROWBACKGROUNDS',(0,0), (-1,-1), [WHITE, LGRAY]),
         ]))
         story += [details_t, Spacer(1, 16)]
 
-        # ══════════════════════════════════════════════════════════
+        # ----------------------------------------------------------
         # PAYMENT HISTORY (if multiple transactions)
-        # ══════════════════════════════════════════════════════════
+        # ----------------------------------------------------------
         if transactions.count() > 1:
             tx_data = [[
                 Paragraph('<b>DATE</b>', label_s),
@@ -6186,9 +6593,9 @@ def generate_bill(request, fee_id):
             ]))
             story += [tt, Spacer(1, 10)]
 
-        # ══════════════════════════════════════════════════════════
+        # ----------------------------------------------------------
         # FOOTER
-        # ══════════════════════════════════════════════════════════
+        # ----------------------------------------------------------
         story.append(HRFlowable(width=W, thickness=0.5, color=BORDER, spaceAfter=4))
         footer_data = [[
             Paragraph('* Fees once paid cannot be refunded.', note_s),
@@ -6201,7 +6608,7 @@ def generate_bill(request, fee_id):
         ]))
         story.append(footer_t)
 
-        # ── Build ─────────────────────────────────────────────────
+        # -- Build -------------------------------------------------
         doc.build(story)
         buf.seek(0)
         transactions.update(bill_generated=True)
@@ -6246,7 +6653,7 @@ def create_fee_payment_request(request, fee_id):
         if not amount or float(amount) <= 0:
             return Response({'error': 'Enter valid amount'}, status=400)
         if float(amount) > float(fee.balance):
-            return Response({'error': f'Amount exceeds balance of ₹{fee.balance}'}, status=400)
+            return Response({'error': f'Amount exceeds balance of ?{fee.balance}'}, status=400)
 
         # Check if there's already a pending request
         existing = FeePaymentRequest.objects.filter(
@@ -6284,7 +6691,7 @@ Notes      : {notes or 'N/A'}
 Batch      : {fee.batch.batch_number}
 Balance Due: Rs. {fee.balance}
 
-Please review and approve/reject in the Fee Management → Payment Requests section.
+Please review and approve/reject in the Fee Management ? Payment Requests section.
 
 Best regards,
 IIE Pulse System
@@ -6323,21 +6730,21 @@ def admin_fee_payment_requests(request):
 
     data = []
     for r in requests_qs:
-        # ── Always fetch fresh balance from fee_payment ───────────
+        # -- Always fetch fresh balance from fee_payment -----------
         fee_payment = r.fee_payment
         fee_payment.refresh_from_db()
         current_balance = float(fee_payment.balance)
         balance_after = max(current_balance - float(r.amount), 0)
-        # ─────────────────────────────────────────────────────────
+        # ---------------------------------------------------------
 
-        # ── Screenshot URL ────────────────────────────────────────
+        # -- Screenshot URL ----------------------------------------
         screenshot_url = None
         if r.screenshot:
             try:
                 screenshot_url = request.build_absolute_uri(r.screenshot.url)
             except Exception:
                 screenshot_url = None
-        # ─────────────────────────────────────────────────────────
+        # ---------------------------------------------------------
 
         data.append({
             'id': r.id,
@@ -6354,7 +6761,7 @@ def admin_fee_payment_requests(request):
             'course_name': fee_payment.batch.course_name.course_name if fee_payment.batch.course_name else '—',
             'current_balance': current_balance,
             'balance_after': balance_after,
-            'screenshot': screenshot_url,   # ← ADD THIS
+            'screenshot': screenshot_url,   # ? ADD THIS
         })
     return Response({'results': data})
 
@@ -6381,26 +6788,26 @@ def process_fee_payment_request(request, request_id):
                 bill_generated=False,
             )
 
-            # ── Force refresh and recalculate ─────────────────────
+            # -- Force refresh and recalculate ---------------------
             fee.refresh_from_db()
             fee.amount_paid = fee.amount_paid + Decimal(str(pay_req.amount))
             fee.balance = fee.total_fee - fee.amount_paid
             fee.is_fully_paid = fee.balance <= Decimal('0')
             fee.save()
-            # ─────────────────────────────────────────────────────
+            # -----------------------------------------------------
 
-            # ── Mark request as approved ──────────────────────────
+            # -- Mark request as approved --------------------------
             pay_req.status = 'approved'
             pay_req.reviewed_at = timezone.now()
             pay_req.reviewed_by = request.user
             pay_req.save()
-            # ─────────────────────────────────────────────────────
+            # -----------------------------------------------------
 
-            # ── Notify student ────────────────────────────────────
-            # ── Notify student (async) ────────────────────────────────
+            # -- Notify student ------------------------------------
+            # -- Notify student (async) --------------------------------
             try:
                 send_email_async(
-                    subject='Fee Payment Verified ✅',
+                    subject='Fee Payment Verified ?',
                     message=f"""Dear {pay_req.student.first_name},
 
 Your payment of Rs. {pay_req.amount} has been verified and recorded.
@@ -6415,7 +6822,7 @@ IIE Pulse Team
                 )
             except Exception as e:
                 print(f"Email queueing error: {e}")
-            # ─────────────────────────────────────────────────────
+            # -----------------------------------------------------
 
             return Response({
                 'success': True,
@@ -6445,7 +6852,7 @@ IIE Pulse Team
 
 
 
-# ── COUNSELOR ANNOUNCEMENTS ────────────────────────────────────────────────────
+# -- COUNSELOR ANNOUNCEMENTS ----------------------------------------------------
 
 from connect.serializers import CounselorAnnouncementSerializer
 
@@ -6543,7 +6950,7 @@ def counselor_delete_announcement(request, pk):
 
 
 
-# ── BRANCH ANNOUNCEMENTS (for mentor & student) ───────────────────────────────
+# -- BRANCH ANNOUNCEMENTS (for mentor & student) -------------------------------
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def branch_announcements(request):
@@ -6589,7 +6996,7 @@ def branch_announcements(request):
             'details': str(e),
             'view': 'branch_announcements'
         }, status=500)
-# ── COUNSELOR FORM HELPERS ────────────────────────────────────────────────────
+# -- COUNSELOR FORM HELPERS ----------------------------------------------------
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def counselor_branch_batches(request):
@@ -6623,7 +7030,7 @@ def counselor_branch_batches(request):
                 'display_text': f"{batch.batch_number} — {course_name} (Trainer: {trainer_name}) — {timing_display or batch.batch_timing}"
             })
         
-        print(f"✅ Returning {len(data)} batches with trainer names")  # Debug log
+        print(f"? Returning {len(data)} batches with trainer names")  # Debug log
         return Response(data)
         
     except Employee.DoesNotExist:
@@ -6677,7 +7084,7 @@ def counselor_branch_students(request):
 
 
 
-# ── COURSE TYPES ──────────────────────────────────────────────────────────────
+# -- COURSE TYPES --------------------------------------------------------------
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])

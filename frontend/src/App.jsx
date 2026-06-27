@@ -224,7 +224,7 @@ function AppRoutes() {
         <Route path="test-results" element={<AdminTestResults />} />
         <Route path="quiz/upload" element={<UploadQuiz />} />
         <Route path="quiz" element={<ManageQuizzes />} />
-        <Route path="quiz-results" element={<StaffQuizResults />} />
+        <Route path="quiz-results" element={<QuizResults />} />
         <Route path="completed" element={<CompletedStudents />} />
       </Route>
 

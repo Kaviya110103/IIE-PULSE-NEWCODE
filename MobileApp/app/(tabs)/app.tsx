@@ -74,6 +74,22 @@ export default function App() {
   const isPracticeAttempt = activeMode === "practice";
   const isAssignedTestAttempt = activeMode === "assigned-test";
 
+  const getPracticeSubmitter = async () => {
+    const [guestSessionRaw, studentId, studentName] = await Promise.all([
+      AsyncStorage.getItem("guest_session"),
+      AsyncStorage.getItem("student_id"),
+      AsyncStorage.getItem("student_name"),
+    ]);
+    const guestSession = guestSessionRaw ? JSON.parse(guestSessionRaw) : {};
+
+    return {
+      username: guestSession?.username || studentId || undefined,
+      name: guestSession?.name || studentName || undefined,
+      email: guestSession?.email,
+      mobile: guestSession?.mobile,
+    };
+  };
+
   const returnToSource = () => {
     if (isPracticeAttempt || isPracticeMode) {
       router.replace({ pathname: "/welcome", params: { module: "practice" } } as any);
@@ -241,14 +257,11 @@ export default function App() {
         : isPracticeAttempt
         ? `/quiz/practice/${quiz.id}/submit/`
         : `/quiz/${quiz.id}/take/`;
-      const guestSessionRaw = isPracticeAttempt
-        ? await AsyncStorage.getItem("guest_session")
-        : "";
-      const guestSession = guestSessionRaw ? JSON.parse(guestSessionRaw) : {};
+      const practiceSubmitter = isPracticeAttempt ? await getPracticeSubmitter() : {};
       const response = await api.post(submitUrl, {
         answers: payloadAnswers,
         auto_submitted: autoSubmitted,
-        username: guestSession?.username,
+        ...practiceSubmitter,
       });
 
       const resultData = {
@@ -279,9 +292,8 @@ export default function App() {
 
   const savePublicPracticeResult = async (quizItem: QuizItem, resultData: QuizResult) => {
     try {
-      const guestSessionRaw = await AsyncStorage.getItem("guest_session");
-      const guestSession = guestSessionRaw ? JSON.parse(guestSessionRaw) : {};
-      const username = guestSession?.username || guestSession?.name || "public";
+      const practiceSubmitter = await getPracticeSubmitter();
+      const username = practiceSubmitter.username || practiceSubmitter.name || "public";
       const storedRaw = await AsyncStorage.getItem(PUBLIC_PRACTICE_RESULTS_KEY);
       const stored = storedRaw ? JSON.parse(storedRaw) : [];
       const list = Array.isArray(stored) ? stored : [];

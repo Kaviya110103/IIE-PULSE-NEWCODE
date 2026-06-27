@@ -60,6 +60,7 @@ const sideNavItems: Array<{
   { key: "quizzes", label: "Quizzes", icon: "school-outline", route: "/quizzes", privateOnly: true },
   { key: "practice", label: "Practice Test", icon: "clipboard-outline", module: "practice" },
   { key: "calendar", label: "Calendar", icon: "calendar-outline", module: "calendar" },
+  { key: "announcement", label: "Announcements", icon: "megaphone-outline", module: "announcement", privateOnly: true },
   { key: "materials", label: "Materials", icon: "book-outline", route: "/materials", privateOnly: true },
   { key: "leave", label: "Leave", icon: "calendar-outline", route: "/leaveapply", privateOnly: true },
   { key: "support", label: "Support", icon: "help-buoy-outline", route: "/support", privateOnly: true },
@@ -84,6 +85,21 @@ const bottomNavItems: Array<{
   { key: "vlogs", label: "Vlogs", icon: "videocam-outline", module: "vlogs" },
 ];
 
+
+type AnnouncementSource = "admin" | "counselor";
+
+type AnnouncementItem = {
+  id: number | string;
+  title: string;
+  message: string;
+  announcement_type?: string;
+  recipient_type?: string;
+  created_at?: string;
+  created_by_name?: string;
+  source?: AnnouncementSource;
+  source_label?: string;
+  audience_label?: string;
+};
 type CourseCategory =
   | "Cloud & DevOps"
   | "Networking"
@@ -570,6 +586,8 @@ export default function WelcomeScreen() {
           <NewsDetailModule item={selectedNews} />
         ) : activeModule === "practice" ? (
           <PracticeModule />
+        ) : activeModule === "announcement" ? (
+          <AnnouncementModule />
         ) : activeModule === "calendar" ? (
           <CalendarModule loading={loading} events={calendarEvents} openEventDetail={openEventDetail} />
         ) : activeModule === "eventDetail" && selectedEvent ? (
@@ -1617,6 +1635,112 @@ function ContactModule() {
   );
 }
 
+
+function AnnouncementModule() {
+  const [announcements, setAnnouncements] = useState<AnnouncementItem[]>([]);
+  const [activeSource, setActiveSource] = useState<AnnouncementSource>("admin");
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  const loadAnnouncements = useCallback(async () => {
+    try {
+      setError("");
+      const response = await api.get("/student/announcements/");
+      const data: AnnouncementItem[] = Array.isArray(response.data)
+        ? response.data
+        : response.data?.results || [];
+      setAnnouncements(data);
+    } catch (err: any) {
+      setError(err?.response?.data?.error || "Failed to load announcements");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadAnnouncements();
+  }, [loadAnnouncements]);
+
+  const sourceCounts = useMemo(() => ({
+    admin: announcements.filter((item) => item.source === "admin").length,
+    counselor: announcements.filter((item) => item.source === "counselor").length,
+  }), [announcements]);
+
+  const filteredAnnouncements = useMemo(
+    () => announcements.filter((item) => item.source === activeSource),
+    [announcements, activeSource]
+  );
+
+  const sourceLabel: Record<AnnouncementSource, string> = {
+    admin: "Admin",
+    counselor: "Counselor",
+  };
+
+  const formatAudience = (item: AnnouncementItem) => {
+    if (item.audience_label) return item.audience_label;
+    if (item.recipient_type === "specific_batch") return "Specific Batch";
+    if (item.recipient_type === "specific" || item.recipient_type === "specific_student") return "Selected Student";
+    return "All Students";
+  };
+
+  return (
+    <ModulePanel title="Announcements" icon="megaphone-outline">
+      <View style={styles.announcementTabs}>
+        {(["admin", "counselor"] as AnnouncementSource[]).map((source) => {
+          const active = activeSource === source;
+          return (
+            <Pressable
+              key={source}
+              style={[styles.announcementTab, active && styles.announcementTabActive]}
+              onPress={() => setActiveSource(source)}
+            >
+              <ThemedText style={[styles.announcementTabText, active && styles.announcementTabTextActive]}>
+                {sourceLabel[source]}
+              </ThemedText>
+              <View style={[styles.announcementCount, active && styles.announcementCountActive]}>
+                <ThemedText style={[styles.announcementCountText, active && styles.announcementCountTextActive]}>
+                  {sourceCounts[source]}
+                </ThemedText>
+              </View>
+            </Pressable>
+          );
+        })}
+      </View>
+
+      {loading ? (
+        <LoadingRow />
+      ) : error ? (
+        <EmptyRow text={error} />
+      ) : filteredAnnouncements.length === 0 ? (
+        <EmptyRow text={`No ${sourceLabel[activeSource].toLowerCase()} announcements found.`} />
+      ) : (
+        <View style={styles.announcementList}>
+          {filteredAnnouncements.map((item) => (
+            <View key={item.id} style={styles.announcementCard}>
+              <View style={styles.announcementCardTop}>
+                <View style={styles.announcementIconBadge}>
+                  <Ionicons name="megaphone" size={18} color="#FFFFFF" />
+                </View>
+                <View style={styles.announcementTitleWrap}>
+                  <ThemedText style={styles.announcementDate}>{formatNewsDate(item.created_at)}</ThemedText>
+                  <ThemedText style={styles.announcementTitle} numberOfLines={2}>{item.title}</ThemedText>
+                </View>
+                <ThemedText style={styles.announcementSourcePill}>{item.source_label || sourceLabel[activeSource]}</ThemedText>
+              </View>
+
+              <ThemedText style={styles.announcementMessage}>{item.message}</ThemedText>
+
+              <View style={styles.announcementMetaRow}>
+                <Ionicons name="people-outline" size={15} color="#5523D2" />
+                <ThemedText style={styles.announcementMetaText}>{formatAudience(item)}</ThemedText>
+              </View>
+            </View>
+          ))}
+        </View>
+      )}
+    </ModulePanel>
+  );
+}
 function PlaceholderModule({ module }: { module: ModuleKey }) {
   const titles: Record<ModuleKey, string> = {
     home: "Home",
@@ -3863,6 +3987,128 @@ const styles = StyleSheet.create({
     backgroundColor: "#FFFFFF",
     alignItems: "center",
     justifyContent: "center",
+  },
+
+  announcementTabs: {
+    flexDirection: "row",
+    backgroundColor: "#F5F3FF",
+    borderRadius: 8,
+    padding: 4,
+    marginBottom: 14,
+  },
+  announcementTab: {
+    flex: 1,
+    minHeight: 42,
+    borderRadius: 6,
+    alignItems: "center",
+    justifyContent: "center",
+    flexDirection: "row",
+    gap: 6,
+  },
+  announcementTabActive: {
+    backgroundColor: "#5523D2",
+  },
+  announcementTabText: {
+    color: "#4B5563",
+    fontSize: 12,
+    fontWeight: "900",
+  },
+  announcementTabTextActive: {
+    color: "#FFFFFF",
+  },
+  announcementCount: {
+    minWidth: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: "#E5E7EB",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 5,
+  },
+  announcementCountActive: {
+    backgroundColor: "#FFFFFF",
+  },
+  announcementCountText: {
+    color: "#4B5563",
+    fontSize: 11,
+    fontWeight: "900",
+  },
+  announcementCountTextActive: {
+    color: "#5523D2",
+  },
+  announcementList: {
+    gap: 12,
+  },
+  announcementCard: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#E9D5FF",
+    padding: 14,
+    shadowColor: "#5523D2",
+    shadowOpacity: 0.08,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 5 },
+    elevation: 3,
+  },
+  announcementCardTop: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginBottom: 10,
+  },
+  announcementIconBadge: {
+    width: 36,
+    height: 36,
+    borderRadius: 8,
+    backgroundColor: "#5523D2",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  announcementTitleWrap: {
+    flex: 1,
+    minWidth: 0,
+  },
+  announcementDate: {
+    color: "#7C3AED",
+    fontSize: 11,
+    fontWeight: "900",
+    textTransform: "uppercase",
+  },
+  announcementTitle: {
+    color: "#111827",
+    fontSize: 16,
+    lineHeight: 21,
+    fontWeight: "900",
+  },
+  announcementSourcePill: {
+    color: "#5523D2",
+    backgroundColor: "#F5F3FF",
+    borderRadius: 6,
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    fontSize: 11,
+    fontWeight: "900",
+  },
+  announcementMessage: {
+    color: "#374151",
+    fontSize: 13,
+    lineHeight: 19,
+    fontWeight: "600",
+  },
+  announcementMetaRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginTop: 12,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: "#F3E8FF",
+  },
+  announcementMetaText: {
+    color: "#5523D2",
+    fontSize: 12,
+    fontWeight: "900",
   },
   placeholderBox: {
     minHeight: 160,

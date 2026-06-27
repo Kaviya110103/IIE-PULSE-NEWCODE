@@ -3,7 +3,8 @@ import axios from "axios";
 import Constants from "expo-constants";
 import { Platform } from "react-native";
 
-const DEFAULT_DEV_API = "https://testiie.indrainstitute.com/api/";
+const LOCAL_API = "http://192.168.1.8:8000/api/";
+const DEFAULT_API = LOCAL_API;
 
 function normalizeApiBaseUrl(url: string) {
   return url.endsWith("/") ? url : `${url}/`;
@@ -53,14 +54,14 @@ function getExpoApiBaseUrl() {
 }
 
 function getApiBaseUrl() {
+  if (Platform.OS !== "web") {
+    return LOCAL_API;
+  }
+
   const envApiUrl = getEnvApiBaseUrl();
 
   if (envApiUrl) {
     return envApiUrl;
-  }
-
-  if (Platform.OS !== "web") {
-    return DEFAULT_DEV_API;
   }
 
   const expoApiUrl = getExpoApiBaseUrl();
@@ -77,7 +78,7 @@ function getApiBaseUrl() {
     return normalizeApiBaseUrl(`${protocol}//${hostname}:8000/api/`);
   }
 
-  return DEFAULT_DEV_API;
+  return DEFAULT_API;
 }
 
 const API_BASE_URL = getApiBaseUrl();
@@ -88,11 +89,12 @@ function getCandidateApiBaseUrls() {
   const urls = new Set<string>();
   const envApiUrl = getEnvApiBaseUrl();
 
+  urls.add(LOCAL_API);
+  urls.add(DEFAULT_API);
+
   if (envApiUrl) {
     urls.add(envApiUrl);
   }
-
-  urls.add(DEFAULT_DEV_API);
 
   if (Platform.OS === "android") {
     urls.add("http://10.0.2.2:8000/api/");
@@ -463,6 +465,8 @@ export async function loginGuest(usernameInput: string, passwordInput: string) {
         JSON.stringify({
           username: guestUser.username,
           name: guestUser.name,
+          email: guestUser.email,
+          mobile: guestUser.mobile,
           user_type: "public",
         })
       );
@@ -509,6 +513,8 @@ export async function loginGuest(usernameInput: string, passwordInput: string) {
       JSON.stringify({
         username: guestUser.username,
         name: guestUser.name,
+        email: guestUser.email,
+        mobile: guestUser.mobile,
         user_type: "public",
       })
     );

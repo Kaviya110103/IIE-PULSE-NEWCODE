@@ -23,23 +23,23 @@ from connect.api_views import (
 urlpatterns = [
     path('admin/', admin.site.urls),
 
-    # ── AUTH ─────────────────────────────────────────────────────────────────
+    # â”€â”€ AUTH â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     path('api/auth/login/', v.LoginView.as_view()),
     path('api/auth/logout/', v.LogoutView.as_view()),
     path('api/auth/refresh/', TokenRefreshView.as_view()),
 
-    # ── DASHBOARDS ────────────────────────────────────────────────────────────
+    # â”€â”€ DASHBOARDS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     path('api/dashboard/admin/', v.AdminDashboardView.as_view()),
     path('api/dashboard/employee/', v.EmployeeDashboardView.as_view()),
     path('api/dashboard/student/', v.StudentDashboardView.as_view()),
     path('api/dashboard/counselor/', v.CounselorDashboardView.as_view()),
 
-    # ── ID GENERATORS ─────────────────────────────────────────────────────────
+    # â”€â”€ ID GENERATORS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     path('api/generate/staff-id/', v.get_next_staff_id),
     path('api/generate/batch-number/', v.get_next_batch_number),
     path('api/generate/student-id/', v.get_next_student_id),
 
-    # ── COURSES ───────────────────────────────────────────────────────────────
+    # â”€â”€ COURSES â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     path('api/courses/', v.CourseListCreateView.as_view()),
     path('api/courses/<int:pk>/', v.CourseDetailView.as_view()),
 
@@ -55,7 +55,7 @@ urlpatterns = [
     path('api/referrals/', v.ReferralListCreateView.as_view()),
     path('api/referrals/<int:pk>/', v.ReferralDetailView.as_view()),
 
-    # ── EMPLOYEES ─────────────────────────────────────────────────────────────
+    # â”€â”€ EMPLOYEES â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     path('api/employees/', v.EmployeeListView.as_view()),
     path('api/employees/create/', v.EmployeeCreateView.as_view()),
     path('api/employees/me/', v.EmployeeProfileView.as_view()),
@@ -64,7 +64,7 @@ urlpatterns = [
     path('api/trainer-batches/<int:trainer_id>/', v.trainer_batches),
     path('api/mentors/', v.admin_view_mentors),
 
-    # ── BATCHES ───────────────────────────────────────────────────────────────
+    # â”€â”€ BATCHES â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     path('api/batches/', v.BatchListCreateView.as_view()),
     path('api/batches/create/', v.BatchCreateView.as_view()),
     path('api/batches/<int:pk>/', v.BatchDetailView.as_view()),
@@ -74,21 +74,22 @@ urlpatterns = [
     path('api/batches/<int:batch_id>/attendance/', v.batch_attendance_records),
     path('api/batches/<int:batch_id>/extract-sessions/', v.extract_and_store_sessions),
 
-    # ── STUDENTS ──────────────────────────────────────────────────────────────
+    # â”€â”€ STUDENTS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     path('api/students/', v.StudentListView.as_view()),
     path('api/students/create/', v.StudentCreateView.as_view()),
     path('api/students/me/', v.StudentProfileView.as_view()),
+    path('api/students/<int:student_id>/mark-completed/', v.mark_student_completed_by_admin_or_counselor),
     path('api/students/<int:pk>/', v.StudentDetailView.as_view()),
     path('api/students/<str:student_id>/assign-staff/', v.assign_staff_to_student),
     path('api/students/<str:student_id>/remove-staff/', v.remove_staff_from_student),
     path('api/students/<int:student_id>/request-completion/', v.request_completion),
     path('api/students/<int:student_id>/complete/', v.complete_student_by_trainer),
 
-    # ── ATTENDANCE ────────────────────────────────────────────────────────────
+    # â”€â”€ ATTENDANCE â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     path('api/attendance/', v.AttendanceListView),
     path('api/attendance/mark/', v.mark_attendance),
 
-    # ── MATERIALS ─────────────────────────────────────────────────────────────
+    # â”€â”€ MATERIALS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     path('api/materials/', v.StudyMaterialListView.as_view()),
     path('api/materials/upload/', v.StudyMaterialCreateView.as_view()),
     path('api/materials/<int:pk>/download/', v.download_material),
@@ -98,7 +99,7 @@ urlpatterns = [
     path('api/material-library/assign/', v.material_library_assign),
     path('api/material-library/<int:pk>/delete/', v.material_library_delete),
 
-    # ── TESTS ─────────────────────────────────────────────────────────────────
+    # â”€â”€ TESTS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     path('api/tests/', v.TestListCreateView.as_view()),
     path('api/tests/<int:pk>/', v.TestDetailView.as_view()),
     path('api/tests/<int:test_id>/add-question/', v.add_question),
@@ -107,11 +108,11 @@ urlpatterns = [
     path('api/assigned-tests/', v.AssignedTestListView.as_view()),
     path('api/student-tests/', student_assigned_tests, name='student-assigned-tests'),
 
-    # ── TEST RESULTS (SEPARATED — student vs staff) ───────────────────────────
+    # â”€â”€ TEST RESULTS (SEPARATED â€” student vs staff) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     path('api/test-results/', student_test_results, name='student-test-results'),   # student
     path('api/staff/test-results/', test_results, name='staff-test-results'),        # staff/admin
 
-    # ── LEAVE ─────────────────────────────────────────────────────────────────
+    # â”€â”€ LEAVE â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     path('api/staff-leave/', v.StaffLeaveListView.as_view()),
     path('api/staff-leave/<int:pk>/process/', v.process_staff_leave),
     path('api/staff/request-completion/<int:student_id>/', v.request_completion),
@@ -122,12 +123,12 @@ urlpatterns = [
     path('api/counselor-leave/', v.CounselorLeaveListView.as_view()),
     path('api/counselor-leave/<int:pk>/process/', v.process_counselor_leave),
 
-    # ── SUPPORT ───────────────────────────────────────────────────────────────
+    # â”€â”€ SUPPORT â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     path('api/staff-support/', v.StaffSupportListView.as_view()),
     path('api/student-support/', v.StudentSupportListView.as_view()),
     path('api/counselor-support/', v.CounselorSupportListView.as_view()),
 
-    # ── ADMIN OVERVIEW ────────────────────────────────────────────────────────
+    # â”€â”€ ADMIN OVERVIEW â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     path('api/admin/monitoring/employees/', v.admin_employee_monitoring),
     path('api/admin/monitoring/students/', v.admin_student_monitoring),
     path('api/staff/monitoring/students/', v.mentor_student_monitoring),
@@ -136,7 +137,7 @@ urlpatterns = [
     path('api/admin/support-overview/', v.admin_support_overview),
     path('api/admin/support/<int:pk>/update/', v.update_support_status),
 
-    # ── ADMIN SUPPORT ENDPOINTS ───────────────────────────────────────────────
+    # â”€â”€ ADMIN SUPPORT ENDPOINTS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     path('api/admin/staff-support/', v.AdminStaffSupportListView.as_view()),
     path('api/admin/staff-support/<int:id>/update/', v.AdminStaffSupportListView.as_view()),
     path('api/admin/staff-support/history/', v.AdminStaffSupportHistoryView.as_view()),
@@ -147,33 +148,34 @@ urlpatterns = [
     path('api/admin/student-support/<int:id>/update/', v.AdminStudentSupportListView.as_view()),
     path('api/admin/student-support/history/', v.AdminStudentSupportHistoryView.as_view()),
 
-    # ── ANNOUNCEMENTS ─────────────────────────────────────────────────────────
+    # â”€â”€ ANNOUNCEMENTS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     path('api/announcements/', v.AnnouncementListView.as_view()),
+    path('api/student/announcements/', v.student_announcements),
     path('api/announcements/create/', v.AnnouncementCreateView.as_view()),
     path('api/announcements/<int:pk>/update/', v.update_announcement, name='update_announcement'),
     path('api/announcements/<int:pk>/toggle/', v.toggle_announcement),
     path('api/announcements/<int:pk>/delete/', v.delete_announcement),
 
-    # ── COUNSELOR ANNOUNCEMENTS ───────────────────────────────────────────────
+    # â”€â”€ COUNSELOR ANNOUNCEMENTS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     path('api/counselor/announcements/', v.CounselorAnnouncementListView.as_view()),
     path('api/counselor/announcements/create/', v.CounselorAnnouncementCreateView.as_view()),
     path('api/counselor/announcements/<int:pk>/update/', v.counselor_update_announcement),
     path('api/counselor/announcements/<int:pk>/toggle/', v.counselor_toggle_announcement),
     path('api/counselor/announcements/<int:pk>/delete/', v.counselor_delete_announcement),
 
-    # ── BRANCH ANNOUNCEMENTS (mentor + student) ──────────────────────────────
+    # â”€â”€ BRANCH ANNOUNCEMENTS (mentor + student) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     path('api/branch-announcements/', v.branch_announcements),
     path('api/counselor/branch-batches/', v.counselor_branch_batches),
     path('api/counselor/branch-students/', v.counselor_branch_students),
 
-    # ── COURSE TYPES ──────────────────────────────────────────────────────────
+    # â”€â”€ COURSE TYPES â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     path('api/course-types/', v.course_type_list),              # public dropdown
     path('api/admin/course-types/', v.admin_course_types),      # admin CRUD list+create
     path('api/admin/course-types/<int:pk>/', v.admin_course_type_detail),  # patch/delete
 
-    # ── BRANCH ANNOUNCEMENTS (mentor & student) ───────────────────────────────
+    # â”€â”€ BRANCH ANNOUNCEMENTS (mentor & student) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-    # ── SESSIONS ──────────────────────────────────────────────────────────────
+    # â”€â”€ SESSIONS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     path('api/sessions/student/', v.student_sessions),
     path('api/sessions/raise-doubt/', v.student_raise_doubt),
     path('api/sessions/staff-doubts/', v.get_staff_doubts_detail),
@@ -183,13 +185,13 @@ urlpatterns = [
     path('api/sessions/student-doubt/', v.student_raise_doubt),
     path('api/sessions/<int:session_id>/doubt-responses/', get_session_doubt_responses, name='session-doubt-responses'),
 
-    # ── DOUBTS & NOTIFICATIONS ────────────────────────────────────────────────
+    # â”€â”€ DOUBTS & NOTIFICATIONS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     path('api/doubts/<int:progress_id>/reply/', v.staff_reply_doubt),
     path('api/doubts/staff/', v.get_staff_doubts_detail),
     path('api/notifications/student/', v.get_student_notifications),
     path('api/notifications/<int:notif_id>/read/', v.mark_notification_read),
 
-    # ── QUIZ ──────────────────────────────────────────────────────────────────
+    # â”€â”€ QUIZ â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     path('api/quiz/', v.QuizListView.as_view()),
     path('api/quiz/upload/', v.upload_quiz),
     path('api/quiz/staff-results/', v.staff_quiz_results),
@@ -206,25 +208,25 @@ urlpatterns = [
     path('api/quiz/<int:quiz_id>/toggle-publish/', v.toggle_quiz_publish),
     path('api/quiz/<int:quiz_id>/delete/', v.delete_quiz),
 
-    # ── COMPLETED STUDENTS ────────────────────────────────────────────────────
+    # â”€â”€ COMPLETED STUDENTS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     path('api/completed-students/', v.CompletedStudentListView.as_view()),
     path('api/completed-students/<int:student_id>/report/', v.download_completion_report, name='download-completion-report'),
     path('completed-students/<int:student_id>/report/', v.download_completion_report),
 
-    # ── COMPLETION REQUESTS ───────────────────────────────────────────────────
+    # â”€â”€ COMPLETION REQUESTS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     path('api/counselor/pending-requests/', v.counselor_pending_requests),
     path('api/counselor/approved-requests/', v.counselor_approved_requests, name='counselor_approved_requests'),
     path('api/counselor/requests/<int:pk>/process/', v.process_completion_request),
     path('api/counselor/requests/<int:request_id>/reassign/', v.counselor_reassign_student),
     path('api/counselor/students/', v.counselor_student_details),
 
-    # ── ADMIN LEAVE ───────────────────────────────────────────────────────────
+    # â”€â”€ ADMIN LEAVE â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     path('api/admin/staff-leave/', v.admin_staff_leave),
     path('api/admin/staff-leave/<int:pk>/process/', v.admin_process_staff_leave),
     path('api/admin/counselor-leave/', v.admin_counselor_leave),
     path('api/admin/counselor-leave/<int:pk>/process/', v.admin_process_counselor_leave),
 
-    # ── QUESTIONS ─────────────────────────────────────────────────────────────
+    # â”€â”€ QUESTIONS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     path('api/questions/<int:question_id>/update/', v.update_question, name='update_question'),
     path('api/questions/<int:question_id>/delete/', v.delete_question, name='delete_question'),
 

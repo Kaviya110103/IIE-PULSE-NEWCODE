@@ -5,7 +5,7 @@ const parseAllowedHosts = () => {
   const hosts = process.env.VITE_ALLOWED_HOSTS
   return hosts
     ? hosts.split(',').map(host => host.trim()).filter(Boolean)
-    : ['testiie.indrainstitute.com']
+    : ['localhost', '127.0.0.1', '192.168.1.8']
 }
 
 export default defineConfig({

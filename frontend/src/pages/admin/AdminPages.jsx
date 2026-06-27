@@ -540,13 +540,14 @@ function MonitoringFilters({ type, filters, setFilters, options, onApply, onClea
 function UserMonitoringPage({ type }) {
   const isEmployee = type === 'employee'
   const endpoint = isEmployee ? '/admin/monitoring/employees/' : '/admin/monitoring/students/'
+  const initialBranch = new URLSearchParams(window.location.search).get('branch') || ''
   const [records, setRecords] = useState([])
   const [filterOptions, setFilterOptions] = useState({})
   const [loading, setLoading] = useState(true)
   const [filters, setFilters] = useState({
     date_from: '',
     date_to: '',
-    branch: '',
+    branch: initialBranch,
     designation: '',
     staff: '',
     search: '',
@@ -649,6 +650,8 @@ export function AdminDashboard() {
 
   if (loading) return <div className="admin-root"><AdminStyles /><AdminSpin /></div>
 
+  return <ModernAdminDashboard stats={stats} navigate={navigate} />
+
   const statCards = [
     { label: 'Active Students', value: stats?.student_count ?? 0, icon: 'fa-user-graduate', color: T.amber, bgColor: 'rgba(244,169,64,0.1)', to: '/admin/students' },
     { label: 'Employees', value: stats?.employee_count ?? 0, icon: 'fa-users-gear', color: T.teal, bgColor: 'rgba(46,196,182,0.1)', to: '/admin/employees' },
@@ -657,6 +660,9 @@ export function AdminDashboard() {
     { label: 'Completed', value: stats?.completed_count ?? 0, icon: 'fa-graduation-cap', color: T.rose, bgColor: 'rgba(232,72,85,0.1)', to: '/admin/completed' },
     { label: 'Counselors', value: stats?.counselor_count ?? 0, icon: 'fa-user-tie', color: T.amber, bgColor: 'rgba(244,169,64,0.1)', to: '/admin/employees?designation=counselor' },
     { label: 'Fee Management', value: 'View', icon: 'fa-rupee-sign', color: T.sage, bgColor: 'rgba(76,175,129,0.1)', to: '/admin/fees' },]
+  const branchStudentCounts = stats?.student_branch_counts || []
+  const batchBranchCounts = stats?.batch_branch_counts || []
+  const maxBranchCount = Math.max(...branchStudentCounts.map(item => item.count || 0), 1)
 
   return (
     <div className="admin-root admin-fade">
@@ -698,6 +704,58 @@ export function AdminDashboard() {
           </div>
         ))}
       </div>
+      <div
+        style={{
+          marginTop: 26,
+          background: 'linear-gradient(135deg, #0f1b2d, #1a2e4a)',
+          borderRadius: 18,
+          padding: 22,
+          boxShadow: '0 12px 34px rgba(15,27,45,.16)',
+          border: '1px solid rgba(255,255,255,.08)',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 14, flexWrap: 'wrap', marginBottom: 18 }}>
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 5 }}>
+              <div style={{ width: 42, height: 42, borderRadius: 14, background: 'rgba(244,169,64,.16)', color: T.amber, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <i className="fas fa-location-dot" />
+              </div>
+              <div>
+                <h5 style={{ margin: 0, color: '#fff', fontFamily: "'Playfair Display'", fontSize: 20 }}>Active Students by Branch</h5>
+                <p style={{ margin: '3px 0 0', color: 'rgba(248,250,252,.68)', fontSize: 13 }}>Total active students and branch-wise live count</p>
+              </div>
+            </div>
+          </div>
+          <div style={{ minWidth: 132, borderRadius: 14, background: 'rgba(255,255,255,.08)', padding: '10px 14px', textAlign: 'right' }}>
+            <div style={{ color: '#fff', fontSize: 26, fontWeight: 900, lineHeight: 1 }}>{stats?.student_count ?? 0}</div>
+            <div style={{ color: 'rgba(248,250,252,.68)', fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '.08em' }}>Total Active</div>
+          </div>
+        </div>
+
+        {branchStudentCounts.length ? (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: 12 }}>
+            {branchStudentCounts.map((item, index) => {
+              const count = item.count || 0
+              const percent = Math.max(7, Math.round((count / maxBranchCount) * 100))
+              return (
+                <div key={`${item.branch}-${index}`} style={{ borderRadius: 14, background: 'rgba(255,255,255,.07)', padding: 14, border: '1px solid rgba(255,255,255,.08)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 10 }}>
+                    <div style={{ color: '#fff', fontSize: 14, fontWeight: 800, textTransform: 'capitalize' }}>{item.branch || 'Unassigned'}</div>
+                    <div style={{ color: T.amberLight, fontSize: 20, fontWeight: 900 }}>{count}</div>
+                  </div>
+                  <div style={{ height: 7, borderRadius: 999, background: 'rgba(255,255,255,.1)', overflow: 'hidden' }}>
+                    <div style={{ width: `${percent}%`, height: '100%', borderRadius: 999, background: `linear-gradient(90deg, ${T.amber}, ${T.teal})` }} />
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        ) : (
+          <div style={{ color: 'rgba(248,250,252,.72)', fontSize: 13, fontWeight: 700, padding: '10px 0' }}>
+            No active students found by branch.
+          </div>
+        )}
+      </div>
     </div>
   )
 }
@@ -705,6 +763,319 @@ export function AdminDashboard() {
 // ══════════════════════════════════════════════════════════════════════════════
 // LEAVE TABLE (Reusable component)
 // ══════════════════════════════════════════════════════════════════════════════
+function ModernAdminDashboard({ stats, navigate }) {
+  const branchStudentCounts = stats?.student_branch_counts || []
+  const batchBranchCounts = stats?.batch_branch_counts || []
+  const completedBranchCounts = stats?.completed_branch_counts || []
+  const branchUsageStats = stats?.branch_usage_stats || []
+  const maxBranchCount = Math.max(...branchStudentCounts.map(item => item.count || 0), 1)
+  const displayBranch = (branch) => {
+    const labels = {
+      '100ft': '100ft',
+      hopes: 'Hopes',
+      kuniyamuthur: 'Kuniyamuthur',
+      kunniyamuthur: 'Kuniyamuthur',
+    }
+    return labels[branch] || branch || 'Unassigned'
+  }
+  const openBranchStudents = (branch) => {
+    if (!branch) navigate('/admin/students')
+    else navigate(`/admin/students?branch=${encodeURIComponent(branch)}`)
+  }
+  const openBranchBatches = (branch) => {
+    if (!branch) navigate('/admin/batches')
+    else navigate(`/admin/batches?branch=${encodeURIComponent(branch)}`)
+  }
+  const openBranchCompleted = (branch) => {
+    if (!branch) navigate('/admin/completed')
+    else navigate(`/admin/completed?branch=${encodeURIComponent(branch)}`)
+  }
+  const branchOrder = ['100ft', 'hopes', 'kuniyamuthur']
+  const makeBranchSegments = (items, onClick) => branchOrder.map((branch, index) => ({
+    label: displayBranch(branch),
+    value: items.find(item => ['kuniyamuthur', 'kunniyamuthur'].includes(branch) ? ['kuniyamuthur', 'kunniyamuthur'].includes(item.branch) : item.branch === branch)?.count || 0,
+    color: ['#7c3aed', '#059669', '#ca8a04'][index] || '#2563eb',
+    onClick: () => onClick(branch),
+  }))
+  const makeFixedBranchCards = (items, onClick) => branchOrder.map((branch, index) => ({
+    label: displayBranch(branch),
+    value: items.find(item => ['kuniyamuthur', 'kunniyamuthur'].includes(branch) ? ['kuniyamuthur', 'kunniyamuthur'].includes(item.branch) : item.branch === branch)?.count || 0,
+    color: ['#7c3aed', '#059669', '#ca8a04'][index] || '#2563eb',
+    onClick: () => onClick(branch),
+  }))
+  const heroCards = [
+    {
+      label: 'Active Students',
+      value: stats?.student_count ?? 0,
+      color: '#2563eb',
+      onClick: () => navigate('/admin/students'),
+    },
+    ...makeFixedBranchCards(branchStudentCounts, openBranchStudents),
+  ]
+  const statCards = [
+    {
+      label: 'Employees',
+      value: stats?.employee_count ?? 0,
+      icon: 'fa-users-gear',
+      color: '#0891b2',
+      soft: '#cffafe',
+      to: '/admin/employees',
+      segments: [
+        { label: 'Mentors', value: stats?.mentor_count ?? 0, onClick: () => navigate('/admin/employees?designation=mentor') },
+        { label: 'Counselors', value: stats?.counselor_count ?? 0, onClick: () => navigate('/admin/employees?designation=counselor') },
+      ],
+      segmentColumns: 2,
+    },
+    {
+      label: 'Batches',
+      value: stats?.batch_count ?? 0,
+      icon: 'fa-layer-group',
+      color: '#7c3aed',
+      soft: '#ede9fe',
+      to: '/admin/batches',
+      segments: makeBranchSegments(batchBranchCounts, openBranchBatches),
+      segmentColumns: 3,
+    },
+    {
+      label: 'Completed',
+      value: stats?.completed_count ?? 0,
+      icon: 'fa-graduation-cap',
+      color: '#dc2626',
+      soft: '#fee2e2',
+      to: '/admin/completed',
+      segments: makeBranchSegments(completedBranchCounts, openBranchCompleted),
+      segmentColumns: 3,
+    },
+    { label: 'Courses', value: stats?.course_count ?? 0, icon: 'fa-book-open', color: '#16a34a', soft: '#dcfce7', to: '/admin/courses' },
+    { label: 'Fee Management', value: 'View', icon: 'fa-rupee-sign', color: '#059669', soft: '#d1fae5', to: '/admin/fees' },
+  ]
+
+  return (
+    <div className="admin-root admin-fade" style={{ width: '100%', overflowX: 'hidden' }}>
+      <AdminStyles />
+      <div style={{
+        borderRadius: 22,
+        padding: '14px 20px',
+        marginBottom: 18,
+        background: 'linear-gradient(135deg, #ffffff 0%, #f8fafc 55%, #eef6ff 100%)',
+        border: '1px solid rgba(148,163,184,.22)',
+        boxShadow: '0 18px 44px rgba(15,23,42,.08)',
+        display: 'grid',
+        gridTemplateColumns: 'minmax(0, 1.25fr) minmax(0, .95fr)',
+        gap: 18,
+        alignItems: 'center',
+        width: '100%',
+      }}>
+        <div style={{ display: 'flex', gap: 16, alignItems: 'center', minWidth: 0 }}>
+          <div style={{ width: 48, height: 48, borderRadius: 14, background: '#0f172a', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 19, boxShadow: '0 12px 24px rgba(15,23,42,.18)', flex: '0 0 auto' }}>
+            <i className="fas fa-chart-line" />
+          </div>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ color: '#64748b', fontSize: 11, fontWeight: 900, letterSpacing: '.13em', textTransform: 'uppercase', marginBottom: 6 }}>Administrator Portal</div>
+            <h2 style={{ margin: 0, color: '#0f172a', fontSize: 'clamp(22px, 2vw, 30px)', lineHeight: 1, fontWeight: 900, fontFamily: "'Playfair Display'", whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>Management Dashboard</h2>
+            <p style={{ margin: '7px 0 0', color: '#475569', fontSize: 'clamp(11px, .9vw, 13px)', fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              Indra Institute of Education overview with live active student distribution.
+            </p>
+          </div>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 10, alignItems: 'stretch', minWidth: 0 }}>
+          {heroCards.length ? heroCards.map(({ label, value, color, onClick }) => (
+            <button
+              key={label}
+              type="button"
+              onClick={onClick}
+              style={{
+                borderRadius: 16,
+                background: 'rgba(255,255,255,.58)',
+                border: '1px solid #e2e8f0',
+                padding: '10px 11px',
+                minHeight: 68,
+                cursor: 'pointer',
+                textAlign: 'left',
+                fontFamily: 'DM Sans',
+              }}
+            >
+              <div style={{ color: '#0f172a', fontSize: 19, fontWeight: 900, lineHeight: 1.05, textTransform: 'capitalize' }}>{value}</div>
+              <div style={{ color: '#64748b', fontSize: 8.8, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '.06em', marginTop: 7, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{label}</div>
+            </button>
+          )) : (
+            <div style={{ borderRadius: 16, background: '#fff', border: '1px solid #e2e8f0', padding: 14, minHeight: 88, color: '#64748b', fontSize: 13, fontWeight: 800 }}>
+              No branch students found
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, minmax(0, 1fr))', gap: 12, marginBottom: 18 }}>
+        {statCards.map((stat) => (
+          <div
+            key={stat.label}
+            onClick={() => stat.to && navigate(stat.to)}
+            style={{
+              cursor: 'pointer',
+              minHeight: 168,
+              borderRadius: 14,
+              background: 'rgba(255,255,255,.58)',
+              border: '1px solid rgba(148,163,184,.22)',
+              boxShadow: '0 12px 28px rgba(15,23,42,.07)',
+              backdropFilter: 'blur(8px)',
+              padding: 14,
+              minWidth: 0,
+              display: 'flex',
+              flexDirection: 'column',
+              justifyContent: 'space-between',
+              textAlign: 'left',
+              fontFamily: 'DM Sans',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+              <div style={{ width: 34, height: 34, borderRadius: 11, background: stat.soft, color: stat.color, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15 }}>
+                <i className={`fas ${stat.icon}`} />
+              </div>
+              <i className="fas fa-arrow-up-right-from-square" style={{ color: '#64748b', opacity: 0.82, fontSize: 13 }} />
+            </div>
+            <div>
+              <div style={{ color: '#0f172a', fontSize: stat.value === 'View' ? 22 : 25, fontWeight: 900, lineHeight: 1, letterSpacing: 0 }}>{stat.value}</div>
+              <div style={{ color: '#334155', fontSize: 11.5, fontWeight: 900, marginTop: 6, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{stat.label}</div>
+              {stat.segments && (
+                <div style={{ marginTop: 10, display: 'grid', gridTemplateColumns: `repeat(${stat.segmentColumns || stat.segments.length}, minmax(0, 1fr))`, gap: 6 }}>
+                  {stat.segments.map(segment => (
+                    <button
+                      key={segment.label}
+                      type="button"
+                      onClick={(event) => {
+                        event.stopPropagation()
+                        segment.onClick()
+                      }}
+                      style={{
+                        borderRadius: 10,
+                        background: 'rgba(255,255,255,.52)',
+                        border: `1px solid ${segment.color || stat.color}4d`,
+                        color: '#0f172a',
+                        padding: '6px 7px',
+                        minHeight: 40,
+                        minWidth: 0,
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'flex-start',
+                        justifyContent: 'center',
+                        gap: 5,
+                        fontSize: 8.8,
+                        fontWeight: 900,
+                        textTransform: 'uppercase',
+                        cursor: 'pointer',
+                        fontFamily: 'DM Sans',
+                      }}
+                    >
+                      <strong style={{ color: segment.color || stat.color, fontSize: 14, lineHeight: 1 }}>{segment.value}</strong>
+                      <span style={{ color: '#334155', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '100%' }}>{segment.label}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div style={{ marginTop: 4 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 12, flexWrap: 'wrap' }}>
+          <div>
+            <div style={{ color: '#64748b', fontSize: 10, fontWeight: 900, letterSpacing: '.12em', textTransform: 'uppercase' }}>User Monitoring</div>
+            <h3 style={{ margin: '2px 0 0', color: '#0f172a', fontSize: 19, fontWeight: 900, fontFamily: "'Playfair Display'" }}>Branch Usage</h3>
+          </div>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 12 }}>
+          {branchUsageStats.map((branchStat, index) => {
+            const color = ['#2563eb', '#059669', '#ca8a04', '#7c3aed', '#dc2626'][index % 5]
+            const percentage = Math.max(0, Math.min(100, Number(branchStat.usage_percentage) || 0))
+            return (
+              <div
+                key={branchStat.branch}
+                style={{
+                  borderRadius: 16,
+                  background: 'rgba(255,255,255,.58)',
+                  border: '1px solid rgba(148,163,184,.22)',
+                  boxShadow: 'none',
+                  backdropFilter: 'blur(8px)',
+                  padding: 16,
+                  minHeight: 190,
+                  minWidth: 0,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  justifyContent: 'space-between',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
+                  <div>
+                    <div style={{ width: 34, height: 34, borderRadius: 11, background: `${color}22`, color, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, marginBottom: 8 }}>
+                      <i className="fas fa-chart-pie" />
+                    </div>
+                    <div style={{ color: '#334155', fontSize: 12, fontWeight: 900, textTransform: 'capitalize' }}>{displayBranch(branchStat.branch)}</div>
+                  </div>
+                  <div style={{ width: 54, height: 54, borderRadius: '50%', background: `conic-gradient(${color} ${percentage * 3.6}deg, rgba(15,23,42,.08) 0deg)`, display: 'grid', placeItems: 'center', flexShrink: 0 }}>
+                    <div style={{ width: 42, height: 42, borderRadius: '50%', background: 'rgba(255,255,255,.72)', border: '1px solid rgba(148,163,184,.16)', display: 'grid', placeItems: 'center', color, fontSize: 15 }}>
+                      <i className="fas fa-gauge-high" />
+                    </div>
+                  </div>
+                </div>
+                <div>
+                  <div style={{ color: '#0f172a', fontSize: 34, lineHeight: 1, fontWeight: 950, marginTop: 12 }}>{percentage}%</div>
+                  <div style={{ color: '#64748b', fontSize: 10, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '.08em', marginTop: 5 }}>Usage</div>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 7, marginTop: 12 }}>
+                  <button
+                    type="button"
+                    onClick={() => navigate(`/admin/monitoring/employees?branch=${encodeURIComponent(branchStat.branch)}`)}
+                    style={{
+                      minHeight: 34,
+                      borderRadius: 10,
+                      border: `1px solid ${color}66`,
+                      background: 'rgba(255,255,255,.52)',
+                      color: '#334155',
+                      fontWeight: 900,
+                      cursor: 'pointer',
+                      fontFamily: 'DM Sans',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 6,
+                      fontSize: 11,
+                    }}
+                  >
+                    <i className="fas fa-user-tie" /> Staff
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => navigate(`/admin/monitoring/students?branch=${encodeURIComponent(branchStat.branch)}`)}
+                    style={{
+                      minHeight: 34,
+                      borderRadius: 10,
+                      border: `1px solid ${color}66`,
+                      background: 'rgba(255,255,255,.52)',
+                      color: '#334155',
+                      fontWeight: 900,
+                      cursor: 'pointer',
+                      fontFamily: 'DM Sans',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 6,
+                      fontSize: 11,
+                    }}
+                  >
+                    <i className="fas fa-user-graduate" /> Student
+                  </button>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function LeaveTable({ title, fetchUrl, processUrl, isHistory }) {
   const [leaves, setLeaves] = useState([])
   const [loading, setLoading] = useState(true)
@@ -2352,6 +2723,7 @@ export function AdminMaterialsOverview() {
 // ADMIN COMPLETED STUDENTS - All branches (Using Admin Components)
 // ══════════════════════════════════════════════════════════════════════════════
 export function CompletedStudents() {
+  const initialBranch = new URLSearchParams(window.location.search).get('branch') || ''
   const [students, setStudents] = useState([])
   const [filteredStudents, setFilteredStudents] = useState([])
   const [loading, setLoading] = useState(true)
@@ -2360,7 +2732,7 @@ export function CompletedStudents() {
 
   // Filter states
   const [filters, setFilters] = useState({
-    branch: '',
+    branch: initialBranch,
     batch: '',
     course: '',
     dateFrom: '',
@@ -2505,12 +2877,21 @@ export function CompletedStudents() {
   const handleFilterChange = (key, value) => {
     const newFilters = { ...filters, [key]: value }
     setFilters(newFilters)
+    if (key === 'branch') {
+      const url = new URL(window.location.href)
+      if (value) url.searchParams.set('branch', value)
+      else url.searchParams.delete('branch')
+      window.history.replaceState(null, '', url)
+    }
     applyFilters(students, newFilters)
   }
 
   const clearFilters = () => {
     const resetFilters = { branch: '', batch: '', course: '', dateFrom: '', dateTo: '', search: '' }
     setFilters(resetFilters)
+    const url = new URL(window.location.href)
+    url.searchParams.delete('branch')
+    window.history.replaceState(null, '', url)
     applyFilters(students, resetFilters)
   }
 
@@ -2996,47 +3377,108 @@ api.get(`/employees/${branch ? `?branch=${branch}` : ''}`)
 // ══════════════════════════════════════════════════════════════════════════════
 export function QuizResults() {
   const [results, setResults] = useState([])
+  const [publicResults, setPublicResults] = useState([])
+  const [activeSegment, setActiveSegment] = useState('students')
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    api.get('/quiz/staff-results/').then(x => setResults(x.data)).finally(() => setLoading(false))
+    api.get('/quiz/staff-results/')
+      .then(x => {
+        const data = x.data || {}
+        const practiceResults = data.public_results || []
+        setResults(practiceResults.filter(result => result.audience === 'student'))
+        setPublicResults(practiceResults.filter(result => result.audience !== 'student'))
+      })
+      .catch(() => toast.error('Failed to load quiz results'))
+      .finally(() => setLoading(false))
   }, [])
+
+  const formatPercent = (value) => Number(value || 0).toFixed(1)
+  const activeCount = activeSegment === 'students' ? results.length : publicResults.length
 
   return (
     <div className="admin-root admin-fade">
       <AdminStyles />
-      <AdminPageHeader title="📊 Quiz Results" sub="All student quiz attempts and scores" />
+      <AdminPageHeader title="Quiz Results" sub="Practice test attended results" />
       <div className="admin-card">
-        <AdminSectionHeader title="All Quiz Results" count={results.length} />
-        {loading ? <AdminSpin /> : results.length === 0 ? (
-          <AdminEmpty msg="No quiz results yet" icon="fa-chart-bar" />
-        ) : (
+        <div style={{ padding: '14px 16px 0', borderBottom: `1px solid ${T.border}` }}>
+          <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+            <button
+              type="button"
+              className={`admin-tab ${activeSegment === 'students' ? 'active' : ''}`}
+              onClick={() => setActiveSegment('students')}
+            >
+              Our Students ({results.length})
+            </button>
+            <button
+              type="button"
+              className={`admin-tab ${activeSegment === 'public' ? 'active' : ''}`}
+              onClick={() => setActiveSegment('public')}
+            >
+              Public Users ({publicResults.length})
+            </button>
+          </div>
+        </div>
+        <AdminSectionHeader title={activeSegment === 'students' ? 'Our Students' : 'Public Users'} count={activeCount} />
+        {loading ? <AdminSpin /> : activeSegment === 'students' && results.length === 0 ? (
+          <AdminEmpty msg="No practice test results yet" icon="fa-chart-bar" />
+        ) : activeSegment === 'public' && publicResults.length === 0 ? (
+          <AdminEmpty msg="No public practice test results yet" icon="fa-chart-bar" />
+        ) : activeSegment === 'students' ? (
           <div style={{ overflowX: 'auto' }}>
             <table className="admin-table">
               <thead><tr><th>Student</th><th>Quiz</th><th>Score</th><th>Percentage</th><th>Result</th><th>Submitted</th></tr></thead>
               <tbody>
                 {results.map(x => (
                   <tr key={x.id}>
-                    <td style={{ fontWeight: 600, fontSize: 13 }}>{x.student_name}</td>
-                    <td style={{ fontSize: 13 }}>{x.quiz_title}</td>
-                    <td style={{ fontWeight: 600 }}>{x.score}</td>
+                    <td style={{ fontWeight: 600, fontSize: 13 }}>{x.student_name || '-'}</td>
+                    <td style={{ fontSize: 13 }}>{x.quiz_title || '-'}</td>
+                    <td style={{ fontWeight: 600 }}>{Number(x.score || 0)} / {Number(x.total_marks || 0)}</td>
                     <td>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                         <div style={{ flex: 1, height: 6, background: T.border, borderRadius: 3, minWidth: 60 }}>
-                          <div style={{ height: '100%', width: `${x.percentage || 0}% `, background: x.is_passed ? T.sage : T.rose, borderRadius: 3 }} />
+                          <div style={{ height: '100%', width: `${Math.min(Number(x.percentage || 0), 100)}%`, background: x.is_passed ? T.sage : T.rose, borderRadius: 3 }} />
                         </div>
-                        <span style={{ fontSize: 12, fontWeight: 600 }}>{x.percentage?.toFixed(1)}%</span>
+                        <span style={{ fontSize: 12, fontWeight: 600 }}>{formatPercent(x.percentage)}%</span>
                       </div>
                     </td>
                     <td><AdminBadge text={x.is_passed ? 'Passed' : 'Failed'} variant={x.is_passed ? 'success' : 'danger'} /></td>
-                    <td style={{ fontSize: 12, color: T.slate }}>{x.submitted_at ? new Date(x.submitted_at).toLocaleDateString('en-IN') : '—'}</td>
+                    <td style={{ fontSize: 12, color: T.slate }}>{x.submitted_at ? new Date(x.submitted_at).toLocaleDateString('en-IN') : '-'}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
-        )}
+        ) : renderPublicQuizResults(publicResults, formatPercent)}
       </div>
+    </div>
+  )
+}
+
+function renderPublicQuizResults(publicResults, formatPercent) {
+  return (
+    <div style={{ overflowX: 'auto' }}>
+      <table className="admin-table">
+        <thead><tr><th>Name</th><th>Email ID</th><th>Mobile No</th><th>Result</th><th>Percentage</th></tr></thead>
+        <tbody>
+          {publicResults.map(x => (
+            <tr key={x.id}>
+              <td style={{ fontWeight: 600, fontSize: 13 }}>{x.name || x.student_name || x.username || '-'}</td>
+              <td style={{ fontSize: 13 }}>{x.email || '-'}</td>
+              <td style={{ fontSize: 13 }}>{x.mobile || '-'}</td>
+              <td><AdminBadge text={x.is_passed ? 'Passed' : 'Failed'} variant={x.is_passed ? 'success' : 'danger'} /></td>
+              <td>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <div style={{ flex: 1, height: 6, background: T.border, borderRadius: 3, minWidth: 60 }}>
+                    <div style={{ height: '100%', width: `${Math.min(Number(x.percentage || 0), 100)}%`, background: x.is_passed ? T.sage : T.rose, borderRadius: 3 }} />
+                  </div>
+                  <span style={{ fontSize: 12, fontWeight: 600 }}>{formatPercent(x.percentage)}%</span>
+                </div>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   )
 }

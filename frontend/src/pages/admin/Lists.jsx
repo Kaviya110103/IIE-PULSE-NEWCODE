@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import api from '../../api/client'
 import { ConfirmModal } from '../../components/common/index.jsx'
 import { useAuth } from '../../context/AuthContext'
@@ -525,15 +526,18 @@ function EmployeeForm({ item, nextStaffId, onClose, onSaved }) {
 // ══════════════════════════════════════════════════════════════════════════════
 export function StudentsList({ adminView = true }) {
   const { user } = useAuth()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const initialBranch = searchParams.get('branch') || ''
   const [data, setData] = useState([])
   const [courses, setCourses] = useState([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
-  const [branchFilter, setBranchFilter] = useState('')
+  const [branchFilter, setBranchFilter] = useState(initialBranch)
   const [showForm, setShowForm] = useState(false)
   const [editItem, setEditItem] = useState(null)
   const [deleteId, setDeleteId] = useState(null)
   const [assignModal, setAssignModal] = useState(null)
+  const [completingId, setCompletingId] = useState(null)
 
   // Determine user role
   const isAdmin = user?.user_type === 'admin'
@@ -544,6 +548,7 @@ export function StudentsList({ adminView = true }) {
   const canDelete = isCounselor      // Only counselor can delete
   const canAssign = isCounselor      // Only counselor can assign
   const canAdd = isCounselor         // Only counselor can add
+  const canComplete = isAdmin || isCounselor
 
   const load = useCallback(() => {
     setLoading(true)
@@ -575,6 +580,35 @@ export function StudentsList({ adminView = true }) {
 
   useEffect(() => { load() }, [load])
 
+  useEffect(() => {
+    setBranchFilter(searchParams.get('branch') || '')
+  }, [searchParams])
+
+  const updateBranchFilter = (branch) => {
+    setBranchFilter(branch)
+    const next = new URLSearchParams(searchParams)
+    if (branch) next.set('branch', branch)
+    else next.delete('branch')
+    setSearchParams(next, { replace: true })
+  }
+
+  const handleCompleteStudent = async (student) => {
+    const name = `${student.first_name || ''} ${student.last_name || ''}`.trim() || student.student_id
+    if (!window.confirm(`Move ${name} to completed students?`)) return
+
+    setCompletingId(student.id)
+    try {
+      await api.post(`/students/${student.id}/mark-completed/`)
+      toast.success('Student moved to completed students')
+      setData(prev => prev.filter(x => x.id !== student.id))
+      load()
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Failed to complete student')
+    } finally {
+      setCompletingId(null)
+    }
+  }
+
   const branches = [...new Set(data.map(s => s.branch).filter(Boolean))]
   const filtered = data.filter(s => {
     const ms = `${s.first_name} ${s.last_name} ${s.student_id} ${s.email} ${s.course}`.toLowerCase().includes(search.toLowerCase())
@@ -595,6 +629,15 @@ export function StudentsList({ adminView = true }) {
             <button className="ls-btn ls-btn-ghost ls-btn-icon" onClick={load}><i className="fas fa-sync-alt" /></button>
           </div>
         } />
+        {branchFilter && (
+          <div style={{ padding: '12px 22px', borderBottom: `1px solid ${T.border}`, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            <span style={{ color: T.slate, fontSize: 13, fontWeight: 700 }}>Showing branch:</span>
+            <Badge text={branchFilter} variant="info" />
+            <button type="button" className="ls-btn ls-btn-ghost ls-btn-sm" onClick={() => updateBranchFilter('')}>
+              <i className="fas fa-times" /> Clear
+            </button>
+          </div>
+        )}
         {loading ? <Spin /> : filtered.length === 0 ? <Empty msg="No students found." /> : (
           <div style={{ overflowX: 'auto' }}>
             <table className="ls-table">
@@ -604,6 +647,7 @@ export function StudentsList({ adminView = true }) {
                   <th>Branch</th><th>Assigned Staff</th><th>Batch</th>
                   {/* Show action columns only for counselor (not admin) */}
                   {canEdit && <><th>Actions</th><th>Assign to Staff</th></>}
+                  {canComplete && <th>Completed</th>}
                 </tr>
               </thead>
               <tbody>
@@ -657,6 +701,19 @@ export function StudentsList({ adminView = true }) {
                           </div>
                         </td>
                       </>
+                    )}
+                    {canComplete && (
+                      <td>
+                        <button
+                          className="ls-btn ls-btn-teal ls-btn-sm"
+                          disabled={completingId === s.id}
+                          onClick={() => handleCompleteStudent(s)}
+                          style={completingId === s.id ? { opacity: 0.65, cursor: 'not-allowed' } : undefined}
+                        >
+                          <i className={`fas ${completingId === s.id ? 'fa-spinner fa-spin' : 'fa-check-circle'}`} />
+                          {completingId === s.id ? 'Moving...' : 'Completed'}
+                        </button>
+                      </td>
                     )}
                   </tr>
                 ))}
@@ -1134,13 +1191,15 @@ function CourseForm({ item, onClose, onSaved }) {
 
 export function BatchesList({ staffView = false }) {
   const { user } = useAuth()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const initialBranch = searchParams.get('branch') || ''
   const [data, setData] = useState([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [editItem, setEditItem] = useState(null)
   const [deleteId, setDeleteId] = useState(null)
   const [search, setSearch] = useState('')
-  const [branchFilter, setBranchFilter] = useState('')
+  const [branchFilter, setBranchFilter] = useState(initialBranch)
 
   // Determine user role
   const isAdmin = user?.user_type === 'admin'
@@ -1176,6 +1235,18 @@ export function BatchesList({ staffView = false }) {
   }
   useEffect(() => { load() }, [])
 
+  useEffect(() => {
+    setBranchFilter(searchParams.get('branch') || '')
+  }, [searchParams])
+
+  const updateBranchFilter = (branch) => {
+    setBranchFilter(branch)
+    const next = new URLSearchParams(searchParams)
+    if (branch) next.set('branch', branch)
+    else next.delete('branch')
+    setSearchParams(next, { replace: true })
+  }
+
   // Get unique branches for filter
   const branches = [...new Set(data.map(b => b.branch).filter(b => b && b !== '—'))]
 
@@ -1208,7 +1279,7 @@ export function BatchesList({ staffView = false }) {
             <button
               key={branch}
               className={`ls-btn ls-btn-sm ${branchFilter === branch ? 'ls-btn-primary' : 'ls-btn-ghost'}`}
-              onClick={() => setBranchFilter(branch)}
+              onClick={() => updateBranchFilter(branch)}
             >
               {branch}
             </button>

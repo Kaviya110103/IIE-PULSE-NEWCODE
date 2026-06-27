@@ -2246,6 +2246,7 @@ export function CounselorAssignedStudents() {
   const [payForm, setPayForm] = useState({ amount: '', payment_mode: 'cash', transaction_id: '' })
   const [screenshot, setScreenshot] = useState(null)
   const [saving, setSaving] = useState(false)
+  const [completingId, setCompletingId] = useState(null)
 
   const counselorBranch = user?.branch
 
@@ -2291,6 +2292,23 @@ export function CounselorAssignedStudents() {
     } catch (err) {
       console.error('Error loading fee data:', err)
       toast.error('Failed to load fee data')
+    }
+  }
+
+  const handleCompleteStudent = async (student) => {
+    const name = `${student.first_name || ''} ${student.last_name || ''}`.trim() || student.student_id
+    if (!window.confirm(`Move ${name} to completed students?`)) return
+
+    setCompletingId(student.id)
+    try {
+      await api.post(`/students/${student.id}/mark-completed/`)
+      toast.success('Student moved to completed students')
+      setStudents(prev => prev.filter(x => x.id !== student.id))
+      loadStudents()
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Failed to complete student')
+    } finally {
+      setCompletingId(null)
     }
   }
 
@@ -2381,6 +2399,7 @@ export function CounselorAssignedStudents() {
                   <th>Trainer</th>
                   <th>Batch</th>
                   <th>Fee Payment</th>
+                  <th>Completed</th>
                 </tr>
               </thead>
               <tbody>
@@ -2406,6 +2425,17 @@ export function CounselorAssignedStudents() {
                         onClick={() => openFeeModal(x)}
                       >
                         <i className="fas fa-rupee-sign" /> Pay Fee
+                      </button>
+                    </td>
+                    <td>
+                      <button
+                        className="counselor-btn counselor-btn-success counselor-btn-sm"
+                        disabled={completingId === x.id}
+                        onClick={() => handleCompleteStudent(x)}
+                        style={completingId === x.id ? { opacity: 0.65, cursor: 'not-allowed' } : undefined}
+                      >
+                        <i className={`fas ${completingId === x.id ? 'fa-spinner fa-spin' : 'fa-check-circle'}`} />
+                        {completingId === x.id ? 'Moving...' : 'Completed'}
                       </button>
                     </td>
                   </tr>

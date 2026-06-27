@@ -4062,36 +4062,16 @@ export function ManageQuizzes() {
 
 export function StaffQuizResults() {
   const [results, setResults] = useState([])
-  const [loading, setLoading] = useState(false)  // Changed to false initially
+  const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
-  const [selectedBatch, setSelectedBatch] = useState('')
-  const [batches, setBatches] = useState([])
-  const [hasSearched, setHasSearched] = useState(false)  // New state to track if search was performed
 
   useEffect(() => {
-    loadBatches()
-    // Don't load results initially - wait for batch selection
+    loadResults()
   }, [])
 
-  const loadBatches = async () => {
-    try {
-      const response = await api.get('/batches/')
-      const batchData = response.data.results || response.data || []
-      setBatches(batchData)
-    } catch (err) {
-      console.error('Failed to load batches:', err)
-    }
-  }
-
   const loadResults = async () => {
-    if (!selectedBatch) {
-      toast.error('Please select a batch first')
-      return
-    }
-
     setLoading(true)
     setError(null)
-    setHasSearched(true)
 
     try {
       // Try multiple possible endpoints
@@ -4124,32 +4104,11 @@ export function StaffQuizResults() {
         throw new Error('No quiz results endpoint available')
       }
 
-      // Handle different response formats
-      let resultsData = []
-      if (response.data.results) {
-        resultsData = response.data.results
-      } else if (Array.isArray(response.data)) {
-        resultsData = response.data
-      } else {
-        resultsData = []
-      }
+      const allResults = response.data.results || (Array.isArray(response.data) ? response.data : [])
 
-      console.log('Loaded quiz results:', resultsData.length)
-
-      // Filter results for selected batch
-      const filteredForBatch = resultsData.filter(r => {
-        const resultBatchId = parseInt(r.batch_id) || parseInt(r.batch?.id)
-        const selectedBatchId = parseInt(selectedBatch)
-        return resultBatchId === selectedBatchId
-      })
-
-      setResults(filteredForBatch)
-
-      if (filteredForBatch.length === 0) {
-        setError('No quiz results available for this batch')
-      } else {
-        setError(null)
-      }
+      console.log('Loaded quiz results:', allResults.length)
+      setResults(allResults)
+      setError(allResults.length === 0 ? 'No quiz results available yet' : null)
 
     } catch (err) {
       console.error('Failed to load quiz results:', err)
@@ -4157,19 +4116,6 @@ export function StaffQuizResults() {
       toast.error('Failed to load quiz results')
     } finally {
       setLoading(false)
-    }
-  }
-
-  // Handle batch selection change
-  const handleBatchChange = (e) => {
-    const batchId = e.target.value
-    setSelectedBatch(batchId)
-    if (batchId) {
-      loadResults()  // Load results when batch is selected
-    } else {
-      setResults([])  // Clear results when no batch selected
-      setHasSearched(false)
-      setError(null)
     }
   }
 
@@ -4182,12 +4128,14 @@ export function StaffQuizResults() {
     )
   }
 
+  const formatPercent = (value) => Number(value || 0).toFixed(1)
+
   return (
     <div className="employee-root">
       <Styles />
       <PH
         title="📊 Quiz Results"
-        sub="Select a batch to view student quiz performances"
+        sub="Batch quiz results for your students"
       />
 
       {error && (
@@ -4197,43 +4145,16 @@ export function StaffQuizResults() {
         </div>
       )}
 
-      <div className="employee-card" style={{ marginBottom: 20 }}>
-        <div style={{ padding: 20 }}>
-          <label className="employee-label">Select Batch *</label>
-          <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-            <select
-              className="employee-select"
-              style={{ maxWidth: 300, flex: 1 }}
-              value={selectedBatch}
-              onChange={handleBatchChange}
-            >
-              <option value="" disabled>
-                -- Select a Batch --
-              </option>
-              {batches.map(batch => (
-                <option key={batch.id} value={batch.id}>
-                  {batch.batch_number}
-                </option>
-              ))}
-            </select>
-            <button
-              className="employee-btn employee-btn-sm employee-btn-primary"
-              onClick={loadResults}
-              disabled={!selectedBatch}
-            >
-              <i className="fas fa-search" /> View Results
-            </button>
-          </div>
-        </div>
-      </div>
-
       <div className="employee-card">
-        <SH title="Quiz Results" count={results.length} />
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+          <SH title="Quiz Results" count={results.length} />
+          <button className="employee-btn employee-btn-sm employee-btn-primary" onClick={loadResults}>
+            <i className="fas fa-sync-alt" /> Refresh
+          </button>
+        </div>
 
-        {!hasSearched ? (
-          <Empty msg="Please select a batch to view quiz results" icon="fa-chart-line" />
-        ) : results.length === 0 ? (
-          <Empty msg="No quiz results available for this batch" icon="fa-chart-line" />
+        {results.length === 0 ? (
+          <Empty msg="No quiz results available yet" icon="fa-chart-line" />
         ) : (
           <div style={{ overflowX: 'auto' }}>
             <table className="employee-table">
@@ -4251,9 +4172,8 @@ export function StaffQuizResults() {
               </thead>
               <tbody>
                 {results.map((result, idx) => {
-                  const passingMarks = result.passing_marks || 50
-                  const percentage = result.percentage || 0
-                  const isPassed = percentage >= passingMarks
+                  const percentage = Number(result.percentage || 0)
+                  const isPassed = result.is_passed
 
                   return (
                     <tr key={result.id || idx}>
@@ -4265,7 +4185,7 @@ export function StaffQuizResults() {
                       <td>{result.quiz_title || result.quiz?.title || '—'}</td>
                       <td>{result.score || 0}/{result.total_marks || result.total_questions || 0}</td>
                       <td>
-                        <strong>{percentage.toFixed(1)}%</strong>
+                        <strong>{formatPercent(percentage)}%</strong>
                       </td>
                       <td>
                         <Badge

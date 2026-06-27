@@ -15,8 +15,10 @@ import {
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import api from "@/services/api";
 
+type AnnouncementSource = "admin" | "counselor";
+
 type AnnouncementItem = {
-  id: number;
+  id: number | string;
   title: string;
   message: string;
   announcement_type?: string;
@@ -24,6 +26,9 @@ type AnnouncementItem = {
   is_published?: boolean;
   created_at?: string;
   created_by_name?: string;
+  source?: AnnouncementSource;
+  source_label?: string;
+  audience_label?: string;
 };
 
 export default function Announcement() {
@@ -31,6 +36,7 @@ export default function Announcement() {
   const [search, setSearch] = useState("");
   const [studentName, setStudentName] = useState("kaviya");
   const [announcements, setAnnouncements] = useState<AnnouncementItem[]>([]);
+  const [activeSource, setActiveSource] = useState<AnnouncementSource>("admin");
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
@@ -50,7 +56,7 @@ export default function Announcement() {
   const loadAnnouncements = async () => {
     try {
       setErrorMsg("");
-      const response = await api.get("/announcements/");
+      const response = await api.get("/student/announcements/");
       const data = Array.isArray(response.data)
         ? response.data
         : response.data?.results || [];
@@ -71,17 +77,23 @@ export default function Announcement() {
     await loadAnnouncements();
   };
 
+  const sourceCounts = useMemo(() => ({
+    admin: announcements.filter((item) => item.source === "admin").length,
+    counselor: announcements.filter((item) => item.source === "counselor").length,
+  }), [announcements]);
+
   const filteredAnnouncements = useMemo(() => {
     const query = search.trim().toLowerCase();
+    const sourceItems = announcements.filter((item) => item.source === activeSource);
 
-    if (!query) return announcements;
+    if (!query) return sourceItems;
 
-    return announcements.filter((item) =>
-      `${item.title} ${item.message} ${item.announcement_type} ${item.recipient_type}`
+    return sourceItems.filter((item) =>
+      `${item.title} ${item.message} ${item.announcement_type} ${item.recipient_type} ${item.source_label}`
         .toLowerCase()
         .includes(query)
     );
-  }, [search, announcements]);
+  }, [search, announcements, activeSource]);
 
   const stats = useMemo(() => {
     const total = filteredAnnouncements.length;
@@ -145,7 +157,8 @@ export default function Announcement() {
     };
   };
 
-  const formatAudience = (recipientType?: string) => {
+  const formatAudience = (recipientType?: string, audienceLabel?: string) => {
+    if (audienceLabel) return audienceLabel;
     switch (recipientType) {
       case "students":
         return "Students Only";
@@ -156,7 +169,12 @@ export default function Announcement() {
       case "counselors":
         return "Counselors Only";
       case "all":
-        return "All Students & Staff";
+        return "All Students";
+      case "specific_batch":
+        return "Specific Batch";
+      case "specific_student":
+      case "specific":
+        return "Selected Student";
       default:
         return "Selected Audience";
     }
@@ -203,6 +221,36 @@ export default function Announcement() {
         </View>
       </View>
 
+      <View style={styles.segmentedControl}>
+        {([
+          { key: "admin", label: "Admin", icon: "shield-checkmark" },
+          { key: "counselor", label: "Counselor", icon: "people" },
+        ] as const).map((segment) => {
+          const active = activeSource === segment.key;
+          return (
+            <TouchableOpacity
+              key={segment.key}
+              style={[styles.segmentButton, active && styles.segmentButtonActive]}
+              onPress={() => setActiveSource(segment.key)}
+            >
+              <Ionicons
+                name={segment.icon}
+                size={16}
+                color={active ? "#fff" : "#4B5563"}
+              />
+              <Text style={[styles.segmentText, active && styles.segmentTextActive]}>
+                {segment.label}
+              </Text>
+              <View style={[styles.segmentCount, active && styles.segmentCountActive]}>
+                <Text style={[styles.segmentCountText, active && styles.segmentCountTextActive]}>
+                  {sourceCounts[segment.key]}
+                </Text>
+              </View>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+
       <View style={styles.statsContainer}>
         {stats.map((stat, index) => (
           <View key={index} style={styles.statCard}>
@@ -246,12 +294,16 @@ export default function Announcement() {
               </View>
 
               <View style={styles.cardBody}>
+                <View style={styles.sourceRow}>
+                  <Text style={styles.sourcePill}>{item.source_label || "Admin"}</Text>
+                </View>
+
                 <Text style={styles.cardSubtitle}>{item.message}</Text>
 
                 <View style={styles.cardMeta}>
                   <Ionicons name="person" size={14} color="#6B7280" />
                   <Text style={styles.metaText}>
-                    Posted by: {item.created_by_name || "Admin"}
+                    Posted by: {item.created_by_name || item.source_label || "Admin"}
                   </Text>
 
                   <Ionicons
@@ -285,7 +337,7 @@ export default function Announcement() {
                         { color: meta.accent },
                       ]}
                     >
-                      {formatAudience(item.recipient_type)}
+                      {formatAudience(item.recipient_type, item.audience_label)}
                     </Text>
                   </View>
                 </View>
@@ -451,6 +503,64 @@ const styles = StyleSheet.create({
     fontSize: 12,
   },
 
+  segmentedControl: {
+    flexDirection: "row",
+    backgroundColor: "#fff",
+    borderRadius: 12,
+    padding: 4,
+    marginBottom: 18,
+    elevation: 2,
+  },
+
+  segmentButton: {
+    flex: 1,
+    minHeight: 42,
+    borderRadius: 9,
+    alignItems: "center",
+    justifyContent: "center",
+    flexDirection: "row",
+    paddingHorizontal: 6,
+  },
+
+  segmentButtonActive: {
+    backgroundColor: "#3B82F6",
+  },
+
+  segmentText: {
+    color: "#4B5563",
+    fontWeight: "700",
+    fontSize: 12,
+    marginLeft: 5,
+  },
+
+  segmentTextActive: {
+    color: "#fff",
+  },
+
+  segmentCount: {
+    minWidth: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: "#E5E7EB",
+    alignItems: "center",
+    justifyContent: "center",
+    marginLeft: 5,
+    paddingHorizontal: 5,
+  },
+
+  segmentCountActive: {
+    backgroundColor: "#fff",
+  },
+
+  segmentCountText: {
+    color: "#4B5563",
+    fontSize: 11,
+    fontWeight: "800",
+  },
+
+  segmentCountTextActive: {
+    color: "#3B82F6",
+  },
   statsContainer: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -517,6 +627,20 @@ const styles = StyleSheet.create({
     padding: 16,
   },
 
+  sourceRow: {
+    flexDirection: "row",
+    marginBottom: 10,
+  },
+
+  sourcePill: {
+    backgroundColor: "#EAF2FF",
+    color: "#2563EB",
+    borderRadius: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    fontSize: 12,
+    fontWeight: "800",
+  },
   cardSubtitle: {
     fontSize: 16,
     fontWeight: "700",

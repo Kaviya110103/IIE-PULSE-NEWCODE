@@ -103,6 +103,16 @@ class EmployeeSerializer(serializers.ModelSerializer):
     class Meta:
         model = Employee
         fields = '__all__'
+        extra_kwargs = {
+            'address': {'allow_blank': True, 'required': False},
+            'last_name': {'allow_blank': True, 'required': False},
+            'gender': {'allow_blank': True, 'required': False},
+        }
+
+    def validate_branch(self, value):
+        if value == 'kunniyamuthur':
+            return 'kuniyamuthur'
+        return value
 
 
 # connect/serializers.py
@@ -465,7 +475,7 @@ class CounselorAnnouncementSerializer(serializers.ModelSerializer):
     specific_batch_name = serializers.SerializerMethodField()
     specific_student_names = serializers.SerializerMethodField()
     specific_batch_details = serializers.SerializerMethodField()
-    branch = serializers.SerializerMethodField()
+    branch = serializers.CharField(read_only=True)
 
     class Meta:
         model = CounselorAnnouncement
@@ -475,7 +485,6 @@ class CounselorAnnouncementSerializer(serializers.ModelSerializer):
             'created_by': {'read_only': True},
         }
     def create(self, validated_data):
-        validated_data.pop('branch', None)
         return super().create(validated_data)
 
     def get_specific_batch_name(self, obj):

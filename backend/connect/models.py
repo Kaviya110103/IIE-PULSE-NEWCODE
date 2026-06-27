@@ -40,7 +40,7 @@ class Employee ( models.Model ) :
     BRANCH_CHOICES = [
             ('100ft' , '100ft Road') ,
             ('hopes' , 'Hopes College') ,
-            ('kunniyamuthur' , 'Kunniyamuthur') ,
+            ('kuniyamuthur' , 'Kuniyamuthur') ,
             ('other' , 'Other Branch') ,
     ]
     
